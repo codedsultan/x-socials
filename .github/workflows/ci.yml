@@ -52,7 +52,7 @@ jobs:
         # Or generate lockfile first with: run: pnpm install && pnpm install --frozen-lockfile
 
       - name: Type check
-        run: pnpm type-check
+        run: npx tsc --noEmit
 
       - name: Run lint (if configured)
         run: |
