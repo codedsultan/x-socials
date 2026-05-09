@@ -42,9 +42,9 @@ class SwaggerDocs {
                         url: "https://spdx.org/licenses/MIT.html",
                     },
                     contact: {
-                        name: "Nikhil Rajput",
-                        url: "https://nixrajput.com",
-                        email: "nkr.nikhil.nkr@gmail.com",
+                        name: "Olusegun Ibraheem",
+                        url: "https://codesultan.xurl.fyi",
+                        email: "codesultan369@gmail.com",
                     },
                 },
                 servers,
@@ -119,7 +119,7 @@ class SwaggerDocs {
             );
 
             // Serve swagger.json endpoint
-            _express.get("/api-docs.json", (req, res) => {
+            _express.get("/api-docs.json", (_req, res) => {
                 res.setHeader("Content-Type", "application/json");
                 res.send(swaggerSpecs);
             });
@@ -135,7 +135,7 @@ class SwaggerDocs {
 
             // Optionally redirect to external docs in production
             if (EnvConfig.isProduction() && process.env.EXTERNAL_DOCS_URL) {
-                _express.get("/api-docs", (req, res) => {
+                _express.get("/api-docs", (_req, res) => {
                     res.redirect(process.env.EXTERNAL_DOCS_URL as string);
                 });
             }
