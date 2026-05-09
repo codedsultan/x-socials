@@ -43,14 +43,14 @@ class ExpressApp {
         this.app.use(express.urlencoded({ extended: true }));
 
         // Environment-specific headers
-        this.app.use((req: Request, res: Response, next: NextFunction) => {
+        this.app.use((_req: Request, res: Response, next: NextFunction) => {
             res.setHeader("X-Environment", EnvConfig.getConfig().NODE_ENV);
             res.setHeader("X-API-Version", "1.0.0");
             next();
         });
 
         // Request logging middleware with environment context
-        this.app.use((req: Request, res: Response, next: NextFunction) => {
+        this.app.use((req: Request, _res: Response, next: NextFunction) => {
             const env = EnvConfig.getConfig().NODE_ENV;
             Logger.getInstance().info(`[${env.toUpperCase()}] ${req.method} ${req.path}`);
             next();
@@ -83,7 +83,7 @@ class ExpressApp {
         if (!this.app) return;
 
         // Health check route with environment info
-        this.app.get("/health", (req: Request, res: Response) => {
+        this.app.get("/health", (_req: Request, res: Response) => {
             const config = EnvConfig.getConfig();
             res.status(200).json({
                 status: "OK",
@@ -95,7 +95,7 @@ class ExpressApp {
         });
 
         // Root route with environment-specific message
-        this.app.get("/", (req: Request, res: Response) => {
+        this.app.get("/", (_req: Request, res: Response) => {
             const config = EnvConfig.getConfig();
             const messages = {
                 development: "🚀 Development Server - Social Media API",
@@ -127,7 +127,7 @@ class ExpressApp {
          *       200:
          *         description: Environment info
          */
-        this.app.get("/api/environment", (req: Request, res: Response) => {
+        this.app.get("/api/environment", (_req: Request, res: Response) => {
             const config = EnvConfig.getConfig();
             res.json({
                 environment: config.NODE_ENV,
@@ -149,7 +149,7 @@ class ExpressApp {
          *       200:
          *         description: Successful response
          */
-        this.app.get("/api/users", (req: Request, res: Response) => {
+        this.app.get("/api/users", (_req: Request, res: Response) => {
             res.json({
                 users: [
                     { id: 1, name: "John Doe" },
@@ -173,7 +173,7 @@ class ExpressApp {
     private static _initializeErrorHandling(): void {
         if (!this.app) return;
 
-        this.app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+        this.app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
             const config = EnvConfig.getConfig();
             Logger.getInstance().error(`[${config.NODE_ENV}] Error: ${err.message}`);
             Logger.getInstance().error(err.stack || "");

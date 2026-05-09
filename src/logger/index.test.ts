@@ -52,6 +52,16 @@ describe("Logger", () => {
         });
     });
 
+    describe("_reset", () => {
+        it("should reset the singleton instance", () => {
+            const instance1 = Logger.getInstance();
+            Logger._reset();
+            const instance2 = Logger.getInstance();
+
+            expect(instance1).not.toBe(instance2);
+        });
+    });
+
     describe("Logging methods", () => {
         it("should log info messages", () => {
             const logger = Logger.getInstance();

@@ -15,8 +15,18 @@ class EnvConfig {
     private static loadConfig(): IEnvConfig {
         const nodeEnv = (process.env["NODE_ENV"] as Environment) || "development";
 
+        // Parse PORT - handle 0 as valid value
+        let port = 4000; // default
+        const portEnv = process.env["PORT"];
+        if (portEnv !== undefined && portEnv !== "") {
+            const parsedPort = parseInt(portEnv, 10);
+            if (!isNaN(parsedPort)) {
+                port = parsedPort;
+            }
+        }
+
         const config: IEnvConfig = {
-            PORT: parseInt(process.env["PORT"] as string, 10) || 4000,
+            PORT: port,
             NODE_ENV: nodeEnv,
             SERVER_MAINTENANCE: process.env["SERVER_MAINTENANCE"] === "true",
         };
@@ -32,9 +42,9 @@ class EnvConfig {
             }
         }
 
-        // Validate PORT is a valid number
-        if (isNaN(config.PORT) || config.PORT <= 0 || config.PORT > 65535) {
-            const error = `Invalid PORT number: ${config.PORT}. Must be between 1 and 65535.`;
+        // Validate PORT is valid (allow 0 for OS-assigned port)
+        if (typeof config.PORT !== "number" || isNaN(config.PORT) || config.PORT < 0 || config.PORT > 65535) {
+            const error = `Invalid PORT number: ${config.PORT}. Must be between 0 and 65535.`;
             Logger.getInstance().error(error);
             throw new Error(error);
         }
@@ -50,6 +60,11 @@ class EnvConfig {
         // Log environment-specific warnings
         if (config.NODE_ENV === "staging") {
             Logger.getInstance().warn("Env Config :: Running in STAGING mode");
+        }
+
+        // Log if using dynamic port
+        if (config.PORT === 0) {
+            Logger.getInstance().info("Env Config :: Using dynamic port (OS will assign available port)");
         }
 
         Logger.getInstance().info(`Env Config :: Loaded (${config.NODE_ENV} mode)`);

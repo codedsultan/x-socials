@@ -1,8 +1,6 @@
 # X-Socials API
 
-[![CI](https://github.com/yourusername/social-media-api/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/social-media-api/actions/workflows/ci.yml)
-[![CD](https://github.com/yourusername/social-media-api/actions/workflows/cd.yml/badge.svg)](https://github.com/yourusername/social-media-api/actions/workflows/cd.yml)
-[![Node.js Version](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-22%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-8.0-orange)](https://pnpm.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -20,13 +18,13 @@ A robust Node.js TypeScript application with Express, featuring environment-base
 - **Winston Logger** — Structured logging with environment-based formatting
 - **Vitest** — Fast unit and integration testing
 - **pnpm** — Fast, disk-efficient package manager
-- **CI/CD Ready** — GitHub Actions workflows for automated testing and deployment
+- **CI/CD Ready** — GitHub Actions workflows for automated testing and deployment(TODO)
 
 ---
 
 ## Prerequisites
 
-- Node.js v18 or higher
+- Node.js v22 or higher
 - pnpm v8 or higher (`npm install -g pnpm`)
 
 ---
@@ -236,19 +234,7 @@ Development logs are colorised with timestamps. Production logs output plain JSO
 
 ---
 
-## Docker Support (Optional)
-
-```dockerfile
-FROM node:18-alpine
-RUN npm install -g pnpm
-WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm build
-EXPOSE 5000
-CMD ["pnpm", "start"]
-```
+## Docker Support (TODO) 
 
 ---
 
