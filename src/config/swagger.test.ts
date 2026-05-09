@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import swaggerJsdoc from "swagger-jsdoc";
 import EnvConfig from "./env";
 import SwaggerDocs from "./swagger";
