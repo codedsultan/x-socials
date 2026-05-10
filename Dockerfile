@@ -22,8 +22,8 @@ RUN pnpm build
 # Remove dev dependencies
 RUN pnpm prune --prod
 
-# Production stage
-FROM node:22-alpine
+# Production stage - ADD THE "app" TARGET NAME HERE
+FROM node:22-alpine AS app  
 
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
