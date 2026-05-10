@@ -189,7 +189,7 @@ class ExpressApp {
         });
 
         // Example error route for testing monitoring
-        this.app.get("/api/error", (_req: Request, res: Response) => {
+        this.app.get("/api/error", (_req: Request, _res: Response) => {
             Monitoring.getInstance().recordError("TestError", "/api/error");
             throw new Error("Test error for monitoring");
         });

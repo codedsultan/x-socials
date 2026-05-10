@@ -1,7 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
 import request from "supertest";
 import ExpressApp from "./index";
-import Logger from "../logger";
 import EnvConfig from "../config/env";
 
 // Mock the entire Logger module
@@ -39,7 +38,7 @@ vi.mock("../config/env", () => ({
 vi.mock("../monitoring/monitoring", () => ({
     default: {
         getInstance: vi.fn(() => ({
-            middleware: vi.fn(() => (req: any, res: any, next: any) => next()),
+            middleware: vi.fn(() => (_req: any, _res: any, next: any) => next()),
             recordError: vi.fn(),
             incrementExternalApiCall: vi.fn(),
             recordUserSignup: vi.fn(),
