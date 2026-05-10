@@ -13,8 +13,11 @@ COPY package.json pnpm-lock.yaml ./
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source code
+# Copy source code - IMPORTANT: Make sure src directory exists
 COPY . .
+
+# Debug: List files to verify src exists
+RUN ls -la && ls -la src/ || echo "src directory not found"
 
 # Build the application
 RUN pnpm build
@@ -22,8 +25,8 @@ RUN pnpm build
 # Remove dev dependencies
 RUN pnpm prune --prod
 
-# Production stage - ADD THE "app" TARGET NAME HERE
-FROM node:22-alpine AS app  
+# Production stage
+FROM node:22-alpine AS app
 
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
