@@ -15,10 +15,22 @@ class EnvConfig {
     private static loadConfig(): IEnvConfig {
         const nodeEnv = (process.env["NODE_ENV"] as Environment) || "development";
 
+        // Parse PORT - handle 0 as valid value
+        let port = 4000; // default
+        const portEnv = process.env["PORT"];
+        if (portEnv !== undefined && portEnv !== "") {
+            const parsedPort = parseInt(portEnv, 10);
+            if (!isNaN(parsedPort)) {
+                port = parsedPort;
+            }
+        }
+
         const config: IEnvConfig = {
-            PORT: parseInt(process.env["PORT"] as string, 10) || 4000,
+            PORT: port,
             NODE_ENV: nodeEnv,
             SERVER_MAINTENANCE: process.env["SERVER_MAINTENANCE"] === "true",
+            API_BASE_URL: process.env["API_BASE_URL"] || "http://localhost:5000",
+            ENABLE_SWAGGER: process.env["ENABLE_SWAGGER"] === "true",
         };
 
         // Validate required keys
@@ -32,9 +44,9 @@ class EnvConfig {
             }
         }
 
-        // Validate PORT is a valid number
-        if (isNaN(config.PORT) || config.PORT <= 0 || config.PORT > 65535) {
-            const error = `Invalid PORT number: ${config.PORT}. Must be between 1 and 65535.`;
+        // Validate PORT is valid (allow 0 for OS-assigned port)
+        if (typeof config.PORT !== "number" || isNaN(config.PORT) || config.PORT < 0 || config.PORT > 65535) {
+            const error = `Invalid PORT number: ${config.PORT}. Must be between 0 and 65535.`;
             Logger.getInstance().error(error);
             throw new Error(error);
         }
@@ -50,6 +62,16 @@ class EnvConfig {
         // Log environment-specific warnings
         if (config.NODE_ENV === "staging") {
             Logger.getInstance().warn("Env Config :: Running in STAGING mode");
+        }
+
+        // Log if using dynamic port
+        if (config.PORT === 0) {
+            Logger.getInstance().info("Env Config :: Using dynamic port (OS will assign available port)");
+        }
+
+
+        if (config.NODE_ENV === "production" && config.ENABLE_SWAGGER) {
+            Logger.getInstance().warn("Env Config :: Swagger is enabled in production - recommended to disable");
         }
 
         Logger.getInstance().info(`Env Config :: Loaded (${config.NODE_ENV} mode)`);
@@ -93,7 +115,33 @@ class EnvConfig {
         return this.getConfig().SERVER_MAINTENANCE;
     }
 
-    // Get environment-specific configuration
+    public static isSwaggerEnabled(): boolean {
+        const config = this.getConfig();
+
+        if (config.NODE_ENV === "production") {
+            const envFlag = process.env["ENABLE_SWAGGER"];
+            if (envFlag !== undefined) {
+                return envFlag === "true";
+            }
+            return false;
+        }
+
+        if (config.NODE_ENV === "staging") {
+            const envFlag = process.env["ENABLE_SWAGGER"];
+            if (envFlag !== undefined) {
+                return envFlag === "true";
+            }
+            return true;
+        }
+
+        const envFlag = process.env["ENABLE_SWAGGER"];
+        if (envFlag !== undefined) {
+            return envFlag === "true";
+        }
+        return true;
+    }
+
+
     public static getApiUrl(): string {
         const config = this.getConfig();
         const baseUrl = process.env["API_BASE_URL"] || `http://localhost:${config.PORT}`;
