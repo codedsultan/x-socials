@@ -123,6 +123,60 @@ social-media-api/
 ```
 
 ---
+## Architecture
+
+### Application bootstrap — `src/app/index.ts`
+
+`ExpressApp` is an instance-based class exported as a singleton (`export default new ExpressApp()`). Construction wires all middleware, routes, and handlers in order. Listening is deferred to `_init()` so the app can be imported and tested without binding a port.
+
+```
+constructor()
+  ├── _mountLogger()         Logger._init(), confirms Winston is ready
+  ├── _mountMiddlewares()    Http → Morgan → CORS (if enabled) → headers → maintenance gate
+  ├── _mountMonitoring()     Prometheus metrics middleware
+  ├── _mountConfigs()        EnvConfig.init, SwaggerDocs.init
+  ├── _mountRoutes()         Health probes, root, API routes
+  └── _registerHandlers()    logErrors → clientErrorHandler → errorHandler → notFoundHandler
+```
+
+**Handler order is load-bearing.** `notFoundHandler` registers a wildcard catch-all and must be last. Placing it before the error middleware causes thrown errors to resolve as 404s.
+
+### Middleware — `src/middlewares/`
+
+| File | Responsibility |
+|---|---|
+| `Http.ts` | helmet (security headers), compression, express json/urlencoded |
+| `Morgan.ts` | HTTP access logging routed through Winston at the `http` level |
+| `CORS.ts` | Cross-origin policy — singleton instance, credentials enabled, `x-auth-token` exposed |
+
+CORS is gated: set `CORS_ENABLED=false` to disable. It defaults to enabled.
+
+### Exception handling — `src/exceptions/`
+
+| File | Responsibility |
+|---|---|
+| `ApiError.ts` | Extends `Error` with a `statusCode` field |
+| `Handler.ts` | Four static Express error handlers covering logging, XHR clients, named JWT/Mongoose errors, and 404 catch-all |
+
+### Environment config — `src/config/env.ts`
+
+All config is loaded once and cached. Required fields are validated at startup — the process refuses to start with a missing or malformed `PORT` or `NODE_ENV`.
+
+Key env vars:
+
+| Var | Default | Notes |
+|---|---|---|
+| `PORT` | `4000` | 0 = OS-assigned |
+| `NODE_ENV` | `development` | `development` / `staging` / `production` / `test` |
+| `CORS_ENABLED` | `true` | Set to `false` to opt out |
+| `SERVER_MAINTENANCE` | `false` | Non-health routes return 503 when true |
+| `ENABLE_SWAGGER` | `false` in prod | Auto-enabled in dev/staging |
+
+### Interfaces — `src/interfaces/core/`
+
+- `config.ts` — `IEnvConfig` (required fields) + optional future fields (Mongo, JWT, email, Cloudinary) + `IFirebaseConfig`
+- `express.ts` — `IRequest` / `IResponse` / `INext` with typed `currentUser?: IUserModel`
+
 
 ## API Endpoints
 

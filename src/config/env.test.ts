@@ -217,4 +217,38 @@ describe("EnvConfig", () => {
             expect(mockApp.locals.isTest).toBe(false);
         });
     });
+
+    describe("CORS_ENABLED", () => {
+        it("defaults to true when CORS_ENABLED is not set", () => {
+            delete process.env.CORS_ENABLED;
+            (EnvConfig as any).config = null;
+
+            const config = EnvConfig.getConfig();
+            expect(config.CORS_ENABLED).toBe(true);
+        });
+
+        it("is true when CORS_ENABLED=true", () => {
+            process.env.CORS_ENABLED = "true";
+            (EnvConfig as any).config = null;
+
+            const config = EnvConfig.getConfig();
+            expect(config.CORS_ENABLED).toBe(true);
+        });
+
+        it("is false when CORS_ENABLED=false (opt-out)", () => {
+            process.env.CORS_ENABLED = "false";
+            (EnvConfig as any).config = null;
+
+            const config = EnvConfig.getConfig();
+            expect(config.CORS_ENABLED).toBe(false);
+        });
+
+        it("is true for any value other than 'false'", () => {
+            process.env.CORS_ENABLED = "yes"; // not "false" → enabled
+            (EnvConfig as any).config = null;
+
+            const config = EnvConfig.getConfig();
+            expect(config.CORS_ENABLED).toBe(true);
+        });
+    });
 });
