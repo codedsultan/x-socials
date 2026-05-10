@@ -10,7 +10,9 @@ build
 .env
 .env.local
 .env.*.local
-
+.env.development
+.env.production
+.env.staging
 # TypeScript cache
 *.tsbuildinfo
 
@@ -33,3 +35,4 @@ pnpm-debug.log*
 # Coverage directory
 coverage
 .nyc_output
+wg.cnf

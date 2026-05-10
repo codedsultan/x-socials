@@ -21,11 +21,11 @@ class SwaggerDocs {
             },
         ];
 
-        // Add localhost for development and staging
+        // Add localhost for development and staging (but not production)
         if (!isProduction) {
             servers.unshift({
                 url: `http://localhost:${config.PORT}`,
-                description: "Local server",
+                description: "Local development server",
             });
         }
 
@@ -42,9 +42,9 @@ class SwaggerDocs {
                         url: "https://spdx.org/licenses/MIT.html",
                     },
                     contact: {
-                        name: "Nikhil Rajput",
-                        url: "https://nixrajput.com",
-                        email: "nkr.nikhil.nkr@gmail.com",
+                        name: "Olusegun Ibraheem",
+                        url: "https://codesultan.xurl.fyi",
+                        email: "codesultan369@gmail.com",
                     },
                 },
                 servers,
@@ -95,8 +95,7 @@ class SwaggerDocs {
     public static init(_express: Application): Application {
         const config = EnvConfig.getConfig();
 
-        // Enable swagger for non-production environments OR if explicitly enabled
-        const enableSwagger = !EnvConfig.isProduction() || process.env.ENABLE_SWAGGER === "true";
+        const enableSwagger = EnvConfig.isSwaggerEnabled();
 
         if (enableSwagger) {
             const swaggerSpecs = this.getSwaggerSpecs();
@@ -119,7 +118,7 @@ class SwaggerDocs {
             );
 
             // Serve swagger.json endpoint
-            _express.get("/api-docs.json", (req, res) => {
+            _express.get("/api-docs.json", (_req, res) => {
                 res.setHeader("Content-Type", "application/json");
                 res.send(swaggerSpecs);
             });
@@ -127,16 +126,39 @@ class SwaggerDocs {
             // Add environment badge to swagger UI
             if (EnvConfig.isStaging()) {
                 Logger.getInstance().warn("Swagger :: Running in STAGING mode with documentation enabled");
+            } else if (EnvConfig.isProduction()) {
+                Logger.getInstance().warn("Swagger :: Running in PRODUCTION mode with documentation enabled (override)");
             } else {
                 Logger.getInstance().info(`Swagger :: Initialized at /api-docs (${config.NODE_ENV} mode)`);
             }
         } else {
-            Logger.getInstance().info("Swagger :: Disabled in production");
+            if (EnvConfig.isProduction()) {
+                Logger.getInstance().info("Swagger :: Disabled in production");
+            } else {
+                Logger.getInstance().info(`Swagger :: Disabled via environment configuration (${config.NODE_ENV} mode)`);
+            }
 
-            // Optionally redirect to external docs in production
-            if (EnvConfig.isProduction() && process.env.EXTERNAL_DOCS_URL) {
-                _express.get("/api-docs", (req, res) => {
+            // Optionally redirect to external docs 
+            if (process.env.EXTERNAL_DOCS_URL) {
+                _express.get("/api-docs", (_req, res) => {
                     res.redirect(process.env.EXTERNAL_DOCS_URL as string);
+                });
+                _express.get("/api-docs.json", (_req, res) => {
+                    res.redirect(`${process.env.EXTERNAL_DOCS_URL}/json`);
+                });
+            } else {
+                // Return 404 when swagger is disabled
+                _express.get("/api-docs", (_req, res) => {
+                    res.status(404).json({
+                        error: "Swagger documentation is disabled",
+                        environment: config.NODE_ENV
+                    });
+                });
+                _express.get("/api-docs.json", (_req, res) => {
+                    res.status(404).json({
+                        error: "Swagger documentation is disabled",
+                        environment: config.NODE_ENV
+                    });
                 });
             }
         }

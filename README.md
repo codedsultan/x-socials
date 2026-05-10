@@ -1,7 +1,7 @@
 # X-Socials API
 
-[![CI](https://github.com/yourusername/social-media-api/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/social-media-api/actions/workflows/ci.yml)
-[![CD](https://github.com/yourusername/social-media-api/actions/workflows/cd.yml/badge.svg)](https://github.com/yourusername/social-media-api/actions/workflows/cd.yml)
+<!-- [![codecov](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)] -->
+[![codecov](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)
 [![Node.js Version](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-8.0-orange)](https://pnpm.io)
