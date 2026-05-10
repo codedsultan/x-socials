@@ -8,6 +8,8 @@ export interface IEnvConfig {
     PORT: number;
     NODE_ENV: Environment;
     SERVER_MAINTENANCE: boolean;
+    API_BASE_URL: string;
+    ENABLE_SWAGGER: boolean;
 }
 
 // Optional: Add environment-specific configurations

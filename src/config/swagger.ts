@@ -21,11 +21,11 @@ class SwaggerDocs {
             },
         ];
 
-        // Add localhost for development and staging
+        // Add localhost for development and staging (but not production)
         if (!isProduction) {
             servers.unshift({
                 url: `http://localhost:${config.PORT}`,
-                description: "Local server",
+                description: "Local development server",
             });
         }
 
@@ -95,8 +95,8 @@ class SwaggerDocs {
     public static init(_express: Application): Application {
         const config = EnvConfig.getConfig();
 
-        // Enable swagger for non-production environments OR if explicitly enabled
-        const enableSwagger = !EnvConfig.isProduction() || process.env.ENABLE_SWAGGER === "true";
+        // Use the env config to determine if swagger should be enabled
+        const enableSwagger = EnvConfig.isSwaggerEnabled();
 
         if (enableSwagger) {
             const swaggerSpecs = this.getSwaggerSpecs();
@@ -127,16 +127,39 @@ class SwaggerDocs {
             // Add environment badge to swagger UI
             if (EnvConfig.isStaging()) {
                 Logger.getInstance().warn("Swagger :: Running in STAGING mode with documentation enabled");
+            } else if (EnvConfig.isProduction()) {
+                Logger.getInstance().warn("Swagger :: Running in PRODUCTION mode with documentation enabled (override)");
             } else {
                 Logger.getInstance().info(`Swagger :: Initialized at /api-docs (${config.NODE_ENV} mode)`);
             }
         } else {
-            Logger.getInstance().info("Swagger :: Disabled in production");
+            if (EnvConfig.isProduction()) {
+                Logger.getInstance().info("Swagger :: Disabled in production");
+            } else {
+                Logger.getInstance().info(`Swagger :: Disabled via environment configuration (${config.NODE_ENV} mode)`);
+            }
 
-            // Optionally redirect to external docs in production
-            if (EnvConfig.isProduction() && process.env.EXTERNAL_DOCS_URL) {
+            // Optionally redirect to external docs 
+            if (process.env.EXTERNAL_DOCS_URL) {
                 _express.get("/api-docs", (_req, res) => {
                     res.redirect(process.env.EXTERNAL_DOCS_URL as string);
+                });
+                _express.get("/api-docs.json", (_req, res) => {
+                    res.redirect(`${process.env.EXTERNAL_DOCS_URL}/json`);
+                });
+            } else {
+                // Return 404 when swagger is disabled
+                _express.get("/api-docs", (_req, res) => {
+                    res.status(404).json({
+                        error: "Swagger documentation is disabled",
+                        environment: config.NODE_ENV
+                    });
+                });
+                _express.get("/api-docs.json", (_req, res) => {
+                    res.status(404).json({
+                        error: "Swagger documentation is disabled",
+                        environment: config.NODE_ENV
+                    });
                 });
             }
         }
