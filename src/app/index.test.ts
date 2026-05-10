@@ -30,6 +30,7 @@ vi.mock("../config/env", () => ({
         isTest: vi.fn(() => false),
         isServerMaintenance: vi.fn(() => false),
         getApiUrl: vi.fn(() => "http://localhost:5000"),
+        isSwaggerEnabled: vi.fn(),
         init: vi.fn(),
     }
 }));
