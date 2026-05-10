@@ -5,6 +5,16 @@ on:
     branches: ["main", "develop"]
   pull_request:
     branches: ["main", "develop"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+        default: production
 
 permissions:
   contents: read
@@ -13,12 +23,12 @@ permissions:
 
 env:
   NODE_VERSION: "22"
-  # PNPM_VERSION: "8"
   REGISTRY: ghcr.io/codedsultan/x-socials
 
 jobs:
   # ────────────────────────────────────────────────────────────────
   # 1. CI — lint, type-check, test, build
+  #    Runs on every push and PR (both branches)
   # ────────────────────────────────────────────────────────────────
   test:
     name: Test & Build
@@ -28,8 +38,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
@@ -41,7 +49,6 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
-
 
       - name: Lint
         run: |
@@ -80,8 +87,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
@@ -104,12 +109,16 @@ jobs:
 
   # ────────────────────────────────────────────────────────────────
   # 2. Build & push Docker image
+  #    main  → manual trigger only (workflow_dispatch)
+  #    develop → auto on every push
   # ────────────────────────────────────────────────────────────────
   build-and-push:
     name: Build & Push Image
     runs-on: ubuntu-latest
     needs: [test, security]
-    if: github.event_name == 'push'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop')
 
     outputs:
       image_tag: ${{ steps.tags.outputs.deploy_tag }}
@@ -121,8 +130,8 @@ jobs:
       - name: Determine environment
         id: env
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
           else
             echo "environment=staging" >> $GITHUB_OUTPUT
           fi
@@ -132,15 +141,12 @@ jobs:
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
 
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          if [[ "${{ steps.env.outputs.environment }}" == "production" ]]; then
             echo "deploy_tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "app_tags=${{ env.REGISTRY }}:latest,${{ env.REGISTRY }}:${{ github.sha }},${{ env.REGISTRY }}:${SHORT_SHA}" >> $GITHUB_OUTPUT
-            echo "worker_tags=${{ env.REGISTRY }}-worker:latest,${{ env.REGISTRY }}-worker:${{ github.sha }},${{ env.REGISTRY }}-worker:${SHORT_SHA}" >> $GITHUB_OUTPUT
-
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          else
             echo "deploy_tag=develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "app_tags=${{ env.REGISTRY }}:develop,${{ env.REGISTRY }}:develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
-            echo "worker_tags=${{ env.REGISTRY }}-worker:develop,${{ env.REGISTRY }}-worker:develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up QEMU
@@ -167,18 +173,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Remove this block if you have no background worker
-      - name: Build and push worker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          target: worker
-          push: true
-          tags: ${{ steps.tags.outputs.worker_tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Image build summary
         run: |
           echo "## 🐳 x-socials Images Built" >> $GITHUB_STEP_SUMMARY
@@ -188,6 +182,7 @@ jobs:
           echo "| Environment | **${{ steps.env.outputs.environment }}** |" >> $GITHUB_STEP_SUMMARY
           echo "| Deploy tag | \`${{ steps.tags.outputs.deploy_tag }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
 
   # ────────────────────────────────────────────────────────────────
   # 3. Trigger Ansible deployment via infra repo dispatch
@@ -196,7 +191,7 @@ jobs:
     name: Trigger Deploy
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.event_name == 'push' && needs.build-and-push.outputs.environment != ''
+    if: needs.build-and-push.result == 'success'
 
     steps:
       - name: Dispatch to infra repo
@@ -210,7 +205,6 @@ jobs:
               "environment": "${{ needs.build-and-push.outputs.environment }}",
               "tag": "${{ needs.build-and-push.outputs.image_tag }}",
               "commit_sha": "${{ github.sha }}",
-              "commit_message": "${{ github.event.head_commit.message }}",
               "triggered_by": "${{ github.actor }}",
               "repo": "${{ github.repository }}",
               "run_id": "${{ github.run_id }}"

@@ -16,6 +16,6 @@ Dockerfile
 .dockerignore
 docker-compose.yml
 tests
-src
+# src
 *.test.ts
 *.spec.ts
