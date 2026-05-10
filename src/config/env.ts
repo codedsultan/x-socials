@@ -31,6 +31,7 @@ class EnvConfig {
             SERVER_MAINTENANCE: process.env["SERVER_MAINTENANCE"] === "true",
             API_BASE_URL: process.env["API_BASE_URL"] || "http://localhost:5000",
             ENABLE_SWAGGER: process.env["ENABLE_SWAGGER"] === "true",
+            CORS_ENABLED: process.env["CORS_ENABLED"] !== "false", // default true; opt-out via CORS_ENABLED=false
         };
 
         // Validate required keys
