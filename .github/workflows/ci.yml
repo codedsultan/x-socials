@@ -2,9 +2,24 @@ name: Build & Deploy
 
 on:
   push:
-    branches: ["main", "develop"]
+    branches: ["develop"]  # Only auto-build on develop
   pull_request:
-    branches: ["main", "develop"]
+    branches: ["main", "develop"]  # PR checks still run for both
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+        type: choice
+        options:
+          - main
+          - develop
+      force_deploy:
+        description: 'Force deploy (skip tests)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -23,9 +38,13 @@ jobs:
   test:
     name: Test & Build
     runs-on: ubuntu-latest
+    # Skip tests if force_deploy is true (manual only)
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force_deploy == true) }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -41,7 +60,6 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
-
 
       - name: Lint
         run: |
@@ -75,9 +93,13 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    # Skip security scan if force_deploy is true (manual only)
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force_deploy == true) }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -103,13 +125,15 @@ jobs:
         continue-on-error: true
 
   # ────────────────────────────────────────────────────────────────
-  # 2. Build & push Docker image
+  # 2. Build & push Docker image (ONLY for manual main OR auto develop)
   # ────────────────────────────────────────────────────────────────
   build-and-push:
     name: Build & Push Image
     runs-on: ubuntu-latest
     needs: [test, security]
-    if: github.event_name == 'push'
+    if: |
+      (github.event_name == 'push' && github.ref_name == 'develop') ||
+      (github.event_name == 'workflow_dispatch')
 
     outputs:
       image_tag: ${{ steps.tags.outputs.deploy_tag }}
@@ -117,11 +141,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}
 
       - name: Determine environment
         id: env
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          BRANCH="${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}"
+          if [[ "$BRANCH" == "main" ]]; then
             echo "environment=production" >> $GITHUB_OUTPUT
           else
             echo "environment=staging" >> $GITHUB_OUTPUT
@@ -131,13 +158,14 @@ jobs:
         id: tags
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
+          BRANCH="${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}"
 
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          if [[ "$BRANCH" == "main" ]]; then
             echo "deploy_tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "app_tags=${{ env.REGISTRY }}:latest,${{ env.REGISTRY }}:${{ github.sha }},${{ env.REGISTRY }}:${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "worker_tags=${{ env.REGISTRY }}-worker:latest,${{ env.REGISTRY }}-worker:${{ github.sha }},${{ env.REGISTRY }}-worker:${SHORT_SHA}" >> $GITHUB_OUTPUT
 
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          elif [[ "$BRANCH" == "develop" ]]; then
             echo "deploy_tag=develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "app_tags=${{ env.REGISTRY }}:develop,${{ env.REGISTRY }}:develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "worker_tags=${{ env.REGISTRY }}-worker:develop,${{ env.REGISTRY }}-worker:develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
@@ -185,6 +213,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | **${{ github.event_name }}** |" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | **${{ steps.env.outputs.environment }}** |" >> $GITHUB_STEP_SUMMARY
           echo "| Deploy tag | \`${{ steps.tags.outputs.deploy_tag }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
@@ -196,7 +225,9 @@ jobs:
     name: Trigger Deploy
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.event_name == 'push' && needs.build-and-push.outputs.environment != ''
+    if: |
+      (github.event_name == 'push' && github.ref_name == 'develop') ||
+      (github.event_name == 'workflow_dispatch' && needs.build-and-push.result == 'success')
 
     steps:
       - name: Dispatch to infra repo
@@ -212,5 +243,6 @@ jobs:
               "commit_sha": "${{ github.sha }}",
               "triggered_by": "${{ github.actor }}",
               "repo": "${{ github.repository }}",
-              "run_id": "${{ github.run_id }}"
+              "run_id": "${{ github.run_id }}",
+              "manual_trigger": ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
             }
