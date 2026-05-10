@@ -26,7 +26,7 @@ A robust Node.js TypeScript application with Express, featuring environment-base
 
 ## Prerequisites
 
-- Node.js v18 or higher
+- Node.js v22 or higher
 - pnpm v8 or higher (`npm install -g pnpm`)
 
 ---
@@ -35,8 +35,8 @@ A robust Node.js TypeScript application with Express, featuring environment-base
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
-cd social-media-api
+git clone https://github.com/codedsultan/x-social
+cd x-social-api
 
 # Install dependencies
 pnpm install
@@ -55,18 +55,12 @@ pnpm dev
 | Script | Description |
 |--------|-------------|
 | `pnpm dev` | Start development server with hot reload |
-| `pnpm dev:staging` | Start server in staging mode |
 | `pnpm build` | Compile TypeScript to JavaScript |
 | `pnpm start` | Start production server |
-| `pnpm start:dev` | Run built app in development mode |
-| `pnpm start:staging` | Run built app in staging mode |
-| `pnpm start:prod` | Run built app in production mode |
 | `pnpm test` | Run tests in watch mode |
 | `pnpm test:run` | Run tests once |
 | `pnpm test:coverage` | Run tests with coverage report |
-| `pnpm test:staging` | Run tests in staging environment |
-| `pnpm type-check` | Check TypeScript types without compiling |
-| `pnpm clean` | Remove the build directory |
+| `npx tsc --noEmit` | Check TypeScript types without compiling |
 
 ---
 
@@ -139,7 +133,7 @@ social-media-api/
 | GET | `/` | Welcome message with environment info |
 | GET | `/health` | Server health check |
 | GET | `/api/environment` | Current environment configuration |
-| GET | `/api/users` | List of users (example) |
+| GET | `/api/users` | List of users (TODO) |
 | GET | `/api-docs` | Swagger UI (dev/staging only) |
 | GET | `/api-docs.json` | Swagger JSON specification |
 
@@ -236,19 +230,8 @@ Development logs are colorised with timestamps. Production logs output plain JSO
 
 ---
 
-## Docker Support (Optional)
+## Docker Support 
 
-```dockerfile
-FROM node:18-alpine
-RUN npm install -g pnpm
-WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm build
-EXPOSE 5000
-CMD ["pnpm", "start"]
-```
 
 ---
 
