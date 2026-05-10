@@ -95,7 +95,6 @@ class SwaggerDocs {
     public static init(_express: Application): Application {
         const config = EnvConfig.getConfig();
 
-        // Use the env config to determine if swagger should be enabled
         const enableSwagger = EnvConfig.isSwaggerEnabled();
 
         if (enableSwagger) {
