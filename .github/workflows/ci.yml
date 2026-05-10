@@ -203,10 +203,11 @@ jobs:
         id: payload
         run: |
           # Escape the commit message for JSON
-          ESCAPED_MESSAGE=$(echo "${{ github.event.head_commit.message }}" | jq -R -s .)
+          COMMIT_MSG="${COMMIT_MESSAGE//\'/\\\'}"
+          ESCAPED_MESSAGE=$(echo "$COMMIT_MSG" | jq -R -s .)
           
-          # Create the complete payload
-          PAYLOAD=$(jq -n \
+          # Create minified JSON payload (single line)
+          PAYLOAD=$(jq -n -c \
             --arg env "${{ needs.build-and-push.outputs.environment }}" \
             --arg tag "${{ needs.build-and-push.outputs.image_tag }}" \
             --arg sha "${{ github.sha }}" \
@@ -214,17 +215,14 @@ jobs:
             --arg triggered_by "${{ github.actor }}" \
             --arg repo "${{ github.repository }}" \
             --arg run_id "${{ github.run_id }}" \
-          '{
-            environment: $env,
-            tag: $tag,
-            commit_sha: $sha,
-            commit_message: ($message | fromjson? // $message),
-            triggered_by: $triggered_by,
-            repo: $repo,
-            run_id: $run_id
-          }')
+            '{environment:$env,tag:$tag,commit_sha:$sha,commit_message:($message|fromjson?//$message),triggered_by:$triggered_by,repo:$repo,run_id:$run_id}')
           
-          echo "payload=$PAYLOAD" >> $GITHUB_OUTPUT
+          # Use delimiter format for multi-line strings
+          echo "payload<<EOF" >> $GITHUB_OUTPUT
+          echo "$PAYLOAD" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
 
       - name: Dispatch to infra repo
         uses: peter-evans/repository-dispatch@v3
