@@ -1,5 +1,5 @@
 # X-Socials API
-[![codecov](https://codecov.io/gh/your-repo/branch/main/graph/badge.svg)]
+[![codecov](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)]
 [![Node.js Version](https://img.shields.io/badge/node-22%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-8.0-orange)](https://pnpm.io)
