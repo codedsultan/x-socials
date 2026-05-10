@@ -2,24 +2,19 @@ name: Build & Deploy
 
 on:
   push:
-    branches: ["develop"]  # Only auto-build on develop
+    branches: ["main", "develop"]
   pull_request:
-    branches: ["main", "develop"]  # PR checks still run for both
+    branches: ["main", "develop"]
   workflow_dispatch:
     inputs:
-      branch:
-        description: 'Branch to deploy'
+      environment:
+        description: "Target environment"
         required: true
-        default: 'main'
         type: choice
         options:
-          - main
-          - develop
-      force_deploy:
-        description: 'Force deploy (skip tests)'
-        required: false
-        default: false
-        type: boolean
+          - production
+          - staging
+        default: production
 
 permissions:
   contents: read
@@ -28,27 +23,21 @@ permissions:
 
 env:
   NODE_VERSION: "22"
-  # PNPM_VERSION: "8"
   REGISTRY: ghcr.io/codedsultan/x-socials
 
 jobs:
   # ────────────────────────────────────────────────────────────────
   # 1. CI — lint, type-check, test, build
+  #    Runs on every push and PR (both branches)
   # ────────────────────────────────────────────────────────────────
   test:
     name: Test & Build
     runs-on: ubuntu-latest
-    # Skip tests if force_deploy is true (manual only)
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force_deploy == true) }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
@@ -93,17 +82,11 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    # Skip security scan if force_deploy is true (manual only)
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force_deploy == true) }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
@@ -125,15 +108,17 @@ jobs:
         continue-on-error: true
 
   # ────────────────────────────────────────────────────────────────
-  # 2. Build & push Docker image (ONLY for manual main OR auto develop)
+  # 2. Build & push Docker image
+  #    main  → manual trigger only (workflow_dispatch)
+  #    develop → auto on every push
   # ────────────────────────────────────────────────────────────────
   build-and-push:
     name: Build & Push Image
     runs-on: ubuntu-latest
     needs: [test, security]
     if: |
-      (github.event_name == 'push' && github.ref_name == 'develop') ||
-      (github.event_name == 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop')
 
     outputs:
       image_tag: ${{ steps.tags.outputs.deploy_tag }}
@@ -141,15 +126,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}
 
       - name: Determine environment
         id: env
         run: |
-          BRANCH="${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}"
-          if [[ "$BRANCH" == "main" ]]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
           else
             echo "environment=staging" >> $GITHUB_OUTPUT
           fi
@@ -158,17 +140,13 @@ jobs:
         id: tags
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          BRANCH="${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref_name }}"
 
-          if [[ "$BRANCH" == "main" ]]; then
+          if [[ "${{ steps.env.outputs.environment }}" == "production" ]]; then
             echo "deploy_tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "app_tags=${{ env.REGISTRY }}:latest,${{ env.REGISTRY }}:${{ github.sha }},${{ env.REGISTRY }}:${SHORT_SHA}" >> $GITHUB_OUTPUT
-            echo "worker_tags=${{ env.REGISTRY }}-worker:latest,${{ env.REGISTRY }}-worker:${{ github.sha }},${{ env.REGISTRY }}-worker:${SHORT_SHA}" >> $GITHUB_OUTPUT
-
-          elif [[ "$BRANCH" == "develop" ]]; then
+          else
             echo "deploy_tag=develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "app_tags=${{ env.REGISTRY }}:develop,${{ env.REGISTRY }}:develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
-            echo "worker_tags=${{ env.REGISTRY }}-worker:develop,${{ env.REGISTRY }}-worker:develop-${SHORT_SHA}" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up QEMU
@@ -195,28 +173,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Remove this block if you have no background worker
-      # - name: Build and push worker image
-      #   uses: docker/build-push-action@v6
-      #   with:
-      #     context: .
-      #     file: Dockerfile
-      #     target: worker
-      #     push: true
-      #     tags: ${{ steps.tags.outputs.worker_tags }}
-      #     cache-from: type=gha
-      #     cache-to: type=gha,mode=max
-
       - name: Image build summary
         run: |
           echo "## 🐳 x-socials Images Built" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| Trigger | **${{ github.event_name }}** |" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | **${{ steps.env.outputs.environment }}** |" >> $GITHUB_STEP_SUMMARY
           echo "| Deploy tag | \`${{ steps.tags.outputs.deploy_tag }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
 
   # ────────────────────────────────────────────────────────────────
   # 3. Trigger Ansible deployment via infra repo dispatch
@@ -225,9 +191,7 @@ jobs:
     name: Trigger Deploy
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: |
-      (github.event_name == 'push' && github.ref_name == 'develop') ||
-      (github.event_name == 'workflow_dispatch' && needs.build-and-push.result == 'success')
+    if: needs.build-and-push.result == 'success'
 
     steps:
       - name: Dispatch to infra repo
@@ -243,6 +207,5 @@ jobs:
               "commit_sha": "${{ github.sha }}",
               "triggered_by": "${{ github.actor }}",
               "repo": "${{ github.repository }}",
-              "run_id": "${{ github.run_id }}",
-              "manual_trigger": ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+              "run_id": "${{ github.run_id }}"
             }
