@@ -35,3 +35,4 @@ pnpm-debug.log*
 # Coverage directory
 coverage
 .nyc_output
+wg.cnf
