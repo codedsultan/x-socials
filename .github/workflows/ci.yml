@@ -168,16 +168,16 @@ jobs:
           cache-to: type=gha,mode=max
 
       # Remove this block if you have no background worker
-      - name: Build and push worker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          target: worker
-          push: true
-          tags: ${{ steps.tags.outputs.worker_tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # - name: Build and push worker image
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: Dockerfile
+      #     target: worker
+      #     push: true
+      #     tags: ${{ steps.tags.outputs.worker_tags }}
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
 
       - name: Image build summary
         run: |
