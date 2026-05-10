@@ -199,19 +199,37 @@ jobs:
     if: github.event_name == 'push' && needs.build-and-push.outputs.environment != ''
 
     steps:
+      - name: Prepare JSON payload
+        id: payload
+        run: |
+          # Escape the commit message for JSON
+          ESCAPED_MESSAGE=$(echo "${{ github.event.head_commit.message }}" | jq -R -s .)
+          
+          # Create the complete payload
+          PAYLOAD=$(jq -n \
+            --arg env "${{ needs.build-and-push.outputs.environment }}" \
+            --arg tag "${{ needs.build-and-push.outputs.image_tag }}" \
+            --arg sha "${{ github.sha }}" \
+            --arg message "$ESCAPED_MESSAGE" \
+            --arg triggered_by "${{ github.actor }}" \
+            --arg repo "${{ github.repository }}" \
+            --arg run_id "${{ github.run_id }}" \
+          '{
+            environment: $env,
+            tag: $tag,
+            commit_sha: $sha,
+            commit_message: ($message | fromjson? // $message),
+            triggered_by: $triggered_by,
+            repo: $repo,
+            run_id: $run_id
+          }')
+          
+          echo "payload=$PAYLOAD" >> $GITHUB_OUTPUT
+
       - name: Dispatch to infra repo
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.INFRA_REPO_PAT }}
           repository: codedsultan/x-infra-node
           event-type: deploy-app
-          client-payload: |
-            {
-              "environment": "${{ needs.build-and-push.outputs.environment }}",
-              "tag": "${{ needs.build-and-push.outputs.image_tag }}",
-              "commit_sha": "${{ github.sha }}",
-              "commit_message": "${{ github.event.head_commit.message }}",
-              "triggered_by": "${{ github.actor }}",
-              "repo": "${{ github.repository }}",
-              "run_id": "${{ github.run_id }}"
-            }
+          client-payload: ${{ steps.payload.outputs.payload }}
