@@ -1,6 +1,5 @@
 # X-Socials API
 
-<!-- [![codecov](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)] -->
 [![codecov](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)
 [![Node.js Version](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
@@ -18,6 +17,7 @@ A robust Node.js TypeScript application with Express, featuring environment-base
 - **Environment Configuration** — Development, Staging, and Production environments
 - **Swagger/OpenAPI** — Automatic API documentation
 - **Winston Logger** — Structured logging with environment-based formatting
+- **Multi-Database** — Simultaneous MongoDB, PostgreSQL, MySQL, and SQLite connections with per-model routing
 - **Vitest** — Fast unit and integration testing
 - **pnpm** — Fast, disk-efficient package manager
 - **CI/CD Ready** — GitHub Actions workflows for automated testing and deployment
@@ -85,6 +85,42 @@ NODE_ENV=development         # Environment: development | staging | production |
 SERVER_MAINTENANCE=false     # Enable maintenance mode
 ENABLE_SWAGGER=true          # Force-enable Swagger (useful in staging)
 API_BASE_URL=                # Base URL for the API
+
+# ── Database (at least one required) ──────────────────────────────────────────
+DEFAULT_DB=mongodb           # Which named connection is the default
+
+# MongoDB
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB_NAME=x_socials
+# MONGO_CONNECTION_NAME=mongodb        # logical name (default: "mongodb")
+# MONGO_SOCKET_TIMEOUT_MS=30000
+# MONGO_SERVER_SELECTION_TIMEOUT_MS=5000
+
+# PostgreSQL
+# PG_HOST=localhost
+# PG_PORT=5432
+# PG_DATABASE=x_socials
+# PG_USER=postgres
+# PG_PASSWORD=secret
+# PG_SSL=false
+# PG_CLIENT=pg                         # pg | pg-native
+# PG_CONNECTION_NAME=postgres
+# PG_POOL_MIN=2
+# PG_POOL_MAX=10
+
+# MySQL
+# MYSQL_HOST=localhost
+# MYSQL_PORT=3306
+# MYSQL_DATABASE=x_socials
+# MYSQL_USER=root
+# MYSQL_PASSWORD=secret
+# MYSQL_CLIENT=mysql2                  # mysql | mysql2
+# MYSQL_CONNECTION_NAME=mysql
+
+# SQLite
+# SQLITE_FILENAME=./data/x_socials.sqlite
+# SQLITE_CLIENT=better-sqlite3         # sqlite3 | better-sqlite3
+# SQLITE_CONNECTION_NAME=sqlite
 ```
 
 See `.env.example` for a full reference.
@@ -99,11 +135,22 @@ social-media-api/
 │   ├── app/
 │   │   └── index.ts            # Express app configuration
 │   ├── config/
+│   │   ├── db/
+│   │   │   ├── adapters/
+│   │   │   │   ├── MongooseAdapter.ts  # MongoDB/Mongoose adapter
+│   │   │   │   └── KnexAdapter.ts      # PostgreSQL / MySQL / SQLite adapter
+│   │   │   ├── AdapterFactory.ts       # Maps DbDriver → adapter class
+│   │   │   ├── DbRegistry.ts           # Named adapter map + lifecycle
+│   │   │   ├── DbResolver.ts           # Per-model connection routing
+│   │   │   ├── DbManager.ts            # Singleton façade (main entry point)
+│   │   │   ├── DbConfig.ts             # Reads DB env vars
+│   │   │   └── index.ts                # Barrel export
 │   │   ├── env.ts              # Environment configuration
 │   │   └── swagger.ts          # Swagger/OpenAPI setup
 │   ├── interfaces/
 │   │   └── core/
-│   │       └── config.ts       # TypeScript interfaces
+│   │       ├── config.ts       # App-level TypeScript interfaces
+│   │       └── database.ts     # Database contracts (IDbAdapter, IDbRegistry, …)
 │   ├── logger/
 │   │   └── index.ts            # Winston logger setup
 │   └── index.ts                # Application entry point
@@ -174,9 +221,65 @@ Key env vars:
 
 ### Interfaces — `src/interfaces/core/`
 
-- `config.ts` — `IEnvConfig` (required fields) + optional future fields (Mongo, JWT, email, Cloudinary) + `IFirebaseConfig`
+- `config.ts` — `IEnvConfig` (required fields) + `DEFAULT_DB` + optional fields (JWT, email, Cloudinary) + `IFirebaseConfig`
 - `express.ts` — `IRequest` / `IResponse` / `INext` with typed `currentUser?: IUserModel`
+- `database.ts` — All database contracts. Key interfaces:
 
+| Interface | Responsibility |
+|---|---|
+| `IDbAdapter` | Single connection — connect, disconnect, ping, getClient |
+| `IDbRegistry` | Named adapter map — register, get, getDefault, connectAll, healthCheck |
+| `IDbResolver` | Model → connection routing with default fallback |
+| `IDbManager` | Façade — initialize, shutdown, bindModel, resolveForModel |
+| `IDbConnectionConfig` | Per-connection config shape (driver, host, pool, ssl, …) |
+| `IModelDbBinding` | Associates a model class name with a connection name |
+
+### Database — `src/config/db/`
+
+The multi-DB system is built around four SOLID-aligned layers:
+
+```
+DbConfig.buildAll()          reads env vars → IDbConnectionConfig[]
+       ↓
+AdapterFactory.create()      IDbConnectionConfig → IDbAdapter
+       ↓
+DbRegistry                   holds named adapters, drives connectAll / healthCheck
+       ↓
+DbResolver                   routes model names → adapters (falls back to default)
+       ↓
+DbManager (singleton)        façade owned by app/index.ts
+```
+
+**Registering connections** happens automatically in `app/_init()` via `DbConfig.buildAll()`. Every `DB_*` / `MONGO_URI` / `PG_*` / `MYSQL_*` / `SQLITE_*` env var that is present produces a named connection.
+
+**Binding a model to a specific connection** (optional — unbound models use the default):
+
+```ts
+import DbManager from "./config/db/DbManager";
+
+DbManager.getInstance().bindModel({
+  modelName: "AnalyticsModel",
+  connectionName: "postgres",      // must match PG_CONNECTION_NAME or "postgres"
+});
+```
+
+**Accessing the raw client in a repository:**
+
+```ts
+import DbManager from "./config/db/DbManager";
+import type { KnexAdapter } from "./config/db/adapters/KnexAdapter";
+import type { MongooseAdapter } from "./config/db/adapters/MongooseAdapter";
+
+// By model name (uses binding or default)
+const adapter = DbManager.getInstance().resolveForModel("UserModel");
+const mongoose = (adapter as MongooseAdapter).getClient(); // mongoose.Connection
+
+// By connection name directly
+const pg = DbManager.getInstance().registry.get("postgres") as KnexAdapter;
+const knex = pg.getClient(); // Knex instance
+```
+
+**Adding a new driver** requires only one new `case` in `AdapterFactory.ts` and a new adapter class — no other files change.
 
 ## API Endpoints
 
@@ -185,20 +288,52 @@ Key env vars:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | Welcome message with environment info |
-| GET | `/health` | Server health check |
+| GET | `/health` | Server health + per-connection DB ping |
+| GET | `/ready` | Kubernetes readiness probe |
+| GET | `/live` | Kubernetes liveness probe |
 | GET | `/api/environment` | Current environment configuration |
 | GET | `/api/users` | List of users (TODO) |
+| GET | `/api/db/status` | Connection names, health map, model bindings *(non-production only)* |
 | GET | `/api-docs` | Swagger UI (dev/staging only) |
 | GET | `/api-docs.json` | Swagger JSON specification |
 
-### Example Response
+### Example responses
 
+**`GET /`**
 ```json
 {
   "message": "🚀 Development Server - Social Media API",
   "environment": "development",
   "version": "1.0.0",
   "documentation": "/api-docs",
+  "timestamp": "2024-01-15T10:30:00.000Z"
+}
+```
+
+**`GET /health`**
+```json
+{
+  "status": "OK",
+  "environment": "development",
+  "maintenance": false,
+  "version": "1.0.0",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "databases": {
+    "mongodb": true,
+    "postgres": true
+  }
+}
+```
+
+**`GET /api/db/status`** *(non-production only)*
+```json
+{
+  "connections": ["mongodb", "postgres"],
+  "health": { "mongodb": true, "postgres": true },
+  "modelBindings": [
+    { "modelName": "UserModel", "connectionName": "mongodb" },
+    { "modelName": "AnalyticsModel", "connectionName": "postgres" }
+  ],
   "timestamp": "2024-01-15T10:30:00.000Z"
 }
 ```
