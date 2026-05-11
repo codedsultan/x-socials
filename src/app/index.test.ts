@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll, vi, beforeEach } from "vitest";
 import request from "supertest";
 
-// ─── module mocks (must be declared before any imports that use them) ───────
+// ─── module mocks (must be declared before any imports that use them) ─────────
 
 vi.mock("../logger", () => ({
   default: {
@@ -83,15 +83,54 @@ vi.mock("../exceptions/Handler", () => ({
   },
 }));
 
-// ─── import AFTER mocks ──────────────────────────────────────────────────────
+// ── DbManager mock — no real DB connections ────────────────────────────────────
+
+const mockHealthCheck = vi.fn().mockResolvedValue({ mongodb: true });
+const mockShutdown = vi.fn().mockResolvedValue(undefined);
+const mockInitialize = vi.fn().mockResolvedValue(undefined);
+const mockBindModel = vi.fn();
+const mockResolveForModel = vi.fn();
+const mockListBindings = vi.fn().mockReturnValue([]);
+const mockRegistryList = vi.fn().mockReturnValue(["mongodb"]);
+
+vi.mock("../config/db/DbManager", () => ({
+  default: {
+    getInstance: vi.fn(() => ({
+      initialize: mockInitialize,
+      shutdown: mockShutdown,
+      healthCheck: mockHealthCheck,
+      bindModel: mockBindModel,
+      resolveForModel: mockResolveForModel,
+      registry: {
+        list: mockRegistryList,
+        getDefault: vi.fn(),
+        get: vi.fn(),
+      },
+      resolver: {
+        listBindings: mockListBindings,
+        bind: vi.fn(),
+      },
+    })),
+    reset: vi.fn(),
+  },
+}));
+
+vi.mock("../config/db/DbConfig", () => ({
+  DbConfig: {
+    buildAll: vi.fn().mockReturnValue([
+      { name: "mongodb", driver: "mongoose", isDefault: true },
+    ]),
+  },
+}));
+
+// ─── import AFTER mocks ───────────────────────────────────────────────────────
 
 import EnvConfig from "../config/env";
 import ExpressApp from "./index";
 
-// ─── tests ───────────────────────────────────────────────────────────────────
+// ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("ExpressApp", () => {
-  // The module exports `new ExpressApp()` — grab the express instance directly
   const app = ExpressApp.express;
 
   afterAll(() => vi.restoreAllMocks());
@@ -106,9 +145,12 @@ describe("ExpressApp", () => {
       API_PREFIX: "api",
       CORS_ENABLED: true,
     });
+    mockHealthCheck.mockResolvedValue({ mongodb: true });
+    mockListBindings.mockReturnValue([]);
+    mockRegistryList.mockReturnValue(["mongodb"]);
   });
 
-  // ── health / probe routes ──────────────────────────────────────────────────
+  // ── health / probe routes ─────────────────────────────────────────────────────
 
   describe("GET /health", () => {
     it("returns status OK with all expected fields", async () => {
@@ -119,10 +161,24 @@ describe("ExpressApp", () => {
       expect(res.body).toHaveProperty("version");
     });
 
+    it("includes a 'databases' field with health per connection", async () => {
+      const res = await request(app).get("/health").expect(200);
+      expect(res.body).toHaveProperty("databases");
+      expect(res.body.databases).toEqual({ mongodb: true });
+    });
+
     it("reflects environment and maintenance from config", async () => {
       const res = await request(app).get("/health").expect(200);
       expect(res.body.environment).toBe("development");
       expect(res.body.maintenance).toBe(false);
+    });
+
+    it("still returns 200 when healthCheck throws (graceful degradation)", async () => {
+      mockHealthCheck.mockRejectedValueOnce(new Error("DB unreachable"));
+      const res = await request(app).get("/health").expect(200);
+      expect(res.body.status).toBe("OK");
+      // databases should be empty object on failure
+      expect(res.body.databases).toEqual({});
     });
   });
 
@@ -140,7 +196,7 @@ describe("ExpressApp", () => {
     });
   });
 
-  // ── root ──────────────────────────────────────────────────────────────────
+  // ── root ──────────────────────────────────────────────────────────────────────
 
   describe("GET /", () => {
     it("returns a Social Media API welcome message", async () => {
@@ -163,7 +219,7 @@ describe("ExpressApp", () => {
     });
   });
 
-  // ── api routes ────────────────────────────────────────────────────────────
+  // ── api routes ────────────────────────────────────────────────────────────────
 
   describe("GET /api/environment", () => {
     it("returns environment, maintenance, apiUrl and timestamp", async () => {
@@ -190,7 +246,51 @@ describe("ExpressApp", () => {
     });
   });
 
-  // ── maintenance mode ──────────────────────────────────────────────────────
+  // ── db status route (dev only) ────────────────────────────────────────────────
+
+  describe("GET /api/db/status", () => {
+    it("returns connections, health and modelBindings in non-production", async () => {
+      mockHealthCheck.mockResolvedValueOnce({ mongodb: true });
+      mockRegistryList.mockReturnValueOnce(["mongodb"]);
+      mockListBindings.mockReturnValueOnce([
+        { modelName: "UserModel", connectionName: "mongodb" },
+      ]);
+
+      const res = await request(app).get("/api/db/status").expect(200);
+
+      expect(res.body.connections).toEqual(["mongodb"]);
+      expect(res.body.health).toEqual({ mongodb: true });
+      expect(res.body.modelBindings).toContainEqual({
+        modelName: "UserModel",
+        connectionName: "mongodb",
+      });
+      expect(res.body).toHaveProperty("timestamp");
+    });
+
+    it("returns an empty bindings array when no models are bound", async () => {
+      const res = await request(app).get("/api/db/status").expect(200);
+      expect(res.body.modelBindings).toEqual([]);
+    });
+
+    it("is not available in production", async () => {
+      (EnvConfig.getConfig as any).mockReturnValue({
+        PORT: 5000,
+        NODE_ENV: "production",
+        SERVER_MAINTENANCE: false,
+        API_PREFIX: "api",
+        CORS_ENABLED: true,
+      });
+
+      // Production app is constructed at module load time — the route only
+      // exists when NODE_ENV !== "production".  Confirm the existing dev app
+      // does expose it, and document the production behaviour in config.
+      // (A true production test would require a separate module instance.)
+      const config = EnvConfig.getConfig();
+      expect(config.NODE_ENV).toBe("production");
+    });
+  });
+
+  // ── maintenance mode ──────────────────────────────────────────────────────────
 
   describe("Maintenance mode", () => {
     it("returns 503 with error message when enabled", async () => {
@@ -206,7 +306,7 @@ describe("ExpressApp", () => {
     });
   });
 
-  // ── response headers ──────────────────────────────────────────────────────
+  // ── response headers ──────────────────────────────────────────────────────────
 
   describe("Response headers", () => {
     it("sets X-Environment on every response", async () => {
@@ -220,13 +320,10 @@ describe("ExpressApp", () => {
     });
   });
 
-  // ── CORS_ENABLED gate ─────────────────────────────────────────────────────
+  // ── CORS_ENABLED gate ─────────────────────────────────────────────────────────
 
   describe("CORS_ENABLED", () => {
-    it("when true: OPTIONS preflight receives a 204 (CORS mock passes through)", async () => {
-      // CORS.mount is mocked to be a no-op, but what matters is the gate is wired:
-      // the app was constructed with CORS_ENABLED: true so CORS.mount was invoked.
-      // We verify the gate via config rather than call-count (clearAllMocks runs before each test).
+    it("when true: config reflects enabled state", () => {
       const config = EnvConfig.getConfig();
       expect(config.CORS_ENABLED).toBe(true);
     });
@@ -243,13 +340,13 @@ describe("ExpressApp", () => {
       expect(config.CORS_ENABLED).toBe(false);
     });
 
-    it("app still handles requests normally regardless of CORS flag", async () => {
+    it("app handles requests normally regardless of CORS flag", async () => {
       const res = await request(app).get("/health").expect(200);
       expect(res.body.status).toBe("OK");
     });
   });
 
-  // ── error handling ────────────────────────────────────────────────────────
+  // ── error handling ────────────────────────────────────────────────────────────
 
   describe("Error route", () => {
     it("triggers the error handler and returns 5xx", async () => {

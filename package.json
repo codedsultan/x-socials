@@ -11,24 +11,33 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "migrate": "knex --knexfile knexfile.js migrate:latest",
+    "migrate:make": "knex --knexfile knexfile.js migrate:make",
+    "migrate:rollback": "knex --knexfile knexfile.js migrate:rollback",
+    "migrate:status": "knex --knexfile knexfile.js migrate:status",
+    "seed": "knex --knexfile knexfile.js seed:run",
+    "seed:make": "knex --knexfile knexfile.js seed:make"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.32.1",
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/body-parser": "^1.19.6",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/morgan": "^1.9.10",
     "@types/node": "^25.6.2",
+    "@types/pg": "^8.20.0",
     "@types/supertest": "^7.2.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "@vitest/coverage-v8": "^4.1.5",
     "supertest": "^7.2.2",
+    "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"
@@ -40,18 +49,24 @@
     "@opentelemetry/sdk-metrics": "^2.7.1",
     "@opentelemetry/sdk-node": "^0.217.0",
     "@opentelemetry/sdk-trace-node": "^2.7.1",
+    "better-sqlite3": "^12.9.0",
     "body-parser": "^2.2.2",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
+    "knex": "^3.2.10",
+    "mongoose": "^9.6.2",
     "morgan": "^1.10.1",
+    "mysql2": "^3.22.3",
+    "pg": "^8.20.0",
+    "pg-query-stream": "^4.14.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.19.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
