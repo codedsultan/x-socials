@@ -1,3 +1,10 @@
+/**
+ * @file src/app/index.ts
+ * @description Instance-based Express application wrapper.
+ *              Database initialisation is handled here alongside the
+ *              existing middleware / route mounting lifecycle.
+ */
+
 import express, { Application, Request, Response } from "express";
 import EnvConfig from "../config/env";
 import SwaggerDocs from "../config/swagger";
@@ -7,11 +14,12 @@ import Http from "../middlewares/Http";
 import Morgan from "../middlewares/Morgan";
 import CORS from "../middlewares/CORS";
 import ExceptionHandler from "../exceptions/Handler";
+import DbManager from "../config/db/DbManager";
+import { DbConfig } from "../config/db/DbConfig";
 
 /**
  * @name ExpressApp
- * @description Instance-based Express application wrapper.
- * Construct once; call _init() to start listening.
+ * @description Construct once; call _init() to start listening.
  */
 class ExpressApp {
     public express: Application;
@@ -32,7 +40,7 @@ class ExpressApp {
         Logger.getInstance().info("App :: Initialized");
     }
 
-    // ─── private setup steps ────────────────────────────────────────────────
+    // ─── private setup steps ─────────────────────────────────────────────────
 
     private _mountLogger(): void {
         Logger._init();
@@ -42,25 +50,19 @@ class ExpressApp {
     private _mountMiddlewares(): void {
         Logger.getInstance().info("App :: Registering middlewares...");
 
-        // Security, compression, body parsing
         this.express = Http.mount(this.express);
-
-        // HTTP request logging via Morgan → Winston
         this.express = Morgan.mount(this.express);
 
-        // CORS — opt-out via CORS_ENABLED=false
         if (EnvConfig.getConfig().CORS_ENABLED) {
             this.express = CORS.mount(this.express);
         }
 
-        // Environment-specific headers
         this.express.use((_req: Request, res: Response, next: any) => {
             res.setHeader("X-Environment", EnvConfig.getConfig().NODE_ENV);
             res.setHeader("X-API-Version", "1.0.0");
             next();
         });
 
-        // Maintenance mode check
         this.express.use((req: Request, res: Response, next: any) => {
             if (EnvConfig.isServerMaintenance() && req.path !== "/health") {
                 res.status(503).json({
@@ -89,15 +91,22 @@ class ExpressApp {
         const config = EnvConfig.getConfig();
         const apiPrefix = config.API_PREFIX ?? "api";
 
-        // Health / probe routes
-        this.express.get("/health", (_req: Request, res: Response) => {
+        // ── Health / probe routes ──
+        this.express.get("/health", async (_req: Request, res: Response) => {
             const cfg = EnvConfig.getConfig();
+
+            // Include DB health in the health-check response
+            const dbHealth = await DbManager.getInstance()
+                .healthCheck()
+                .catch(() => ({}));
+
             res.status(200).json({
                 status: "OK",
                 environment: cfg.NODE_ENV,
                 maintenance: cfg.SERVER_MAINTENANCE,
                 timestamp: new Date().toISOString(),
                 version: "1.0.0",
+                databases: dbHealth,
             });
         });
 
@@ -109,7 +118,7 @@ class ExpressApp {
             res.status(200).json({ status: "alive" });
         });
 
-        // Root
+        // ── Root ──
         this.express.get("/", (_req: Request, res: Response) => {
             const cfg = EnvConfig.getConfig();
             const messages: Record<string, string> = {
@@ -160,15 +169,24 @@ class ExpressApp {
             throw new Error("Test error for monitoring");
         });
 
+        // ── DB status route (non-production only) ──
+        if (EnvConfig.getConfig().NODE_ENV !== "production") {
+            this.express.get(`/${apiPrefix}/db/status`, async (_req: Request, res: Response) => {
+                const health = await DbManager.getInstance().healthCheck();
+                const connections = DbManager.getInstance().registry.list();
+
+                res.json({
+                    connections,
+                    health,
+                    modelBindings: DbManager.getInstance().resolver.listBindings(),
+                    timestamp: new Date().toISOString(),
+                });
+            });
+        }
+
         Logger.getInstance().info("Routes :: Mounted");
     }
 
-    /**
-     * Error handlers must be registered AFTER all routes.
-     * Order is: logErrors → clientErrorHandler → errorHandler → notFoundHandler (last).
-     * notFoundHandler uses a wildcard catch-all so it must sit at the very end,
-     * after the error middleware chain, otherwise Express swallows thrown errors into 404.
-     */
     private _registerHandlers(): void {
         Logger.getInstance().info("App :: Registering handlers...");
 
@@ -180,14 +198,17 @@ class ExpressApp {
         Logger.getInstance().info("App :: Handlers registered");
     }
 
-    // ─── public API ─────────────────────────────────────────────────────────
+    // ─── public API ──────────────────────────────────────────────────────────
 
     /**
-     * Starts the HTTP server. Separated from the constructor so tests can
-     * import and inspect the app without binding a port.
+     * Starts the HTTP server AND initialises database connections.
+     * Separated from the constructor so tests can inspect the app without binding a port.
      */
     public async _init(): Promise<void> {
         Logger.getInstance().info("Server :: Starting...");
+
+        // ── Database initialisation ──
+        await this._initDatabases();
 
         const port = EnvConfig.getConfig().PORT;
 
@@ -204,24 +225,21 @@ class ExpressApp {
                 Logger.getInstance().info(
                     `${envIcon[config.NODE_ENV]} Server running on ${EnvConfig.getApiUrl()}`
                 );
-                Logger.getInstance().info(
-                    `📦 Environment: ${config.NODE_ENV.toUpperCase()}`
-                );
+                Logger.getInstance().info(`📦 Environment: ${config.NODE_ENV.toUpperCase()}`);
                 Logger.getInstance().info(
                     `🔧 Maintenance Mode: ${config.SERVER_MAINTENANCE ? "ON" : "OFF"}`
                 );
-                Logger.getInstance().info(
-                    `📊 Prometheus metrics: http://localhost:9464/metrics`
-                );
+                Logger.getInstance().info(`📊 Prometheus metrics: http://localhost:9464/metrics`);
 
-                if (
-                    config.NODE_ENV !== "production" ||
-                    process.env["ENABLE_SWAGGER"] === "true"
-                ) {
+                if (config.NODE_ENV !== "production" || process.env["ENABLE_SWAGGER"] === "true") {
                     Logger.getInstance().info(
                         `📚 API Documentation: ${EnvConfig.getApiUrl()}/api-docs`
                     );
                 }
+
+                // Log registered connections
+                const connections = DbManager.getInstance().registry.list();
+                Logger.getInstance().info(`🗄️  Database connections: ${connections.join(", ")}`);
             })
             .on("error", (err: Error) => {
                 Logger.getInstance().error(`Server error: ${err.message}`);
@@ -233,13 +251,38 @@ class ExpressApp {
     }
 
     /**
-     * Closes the HTTP server. The caller (e.g. src/index.ts) owns the
-     * shutdown decision — no process.exit() here.
+     * Initialise all database connections from env config.
      */
+    private async _initDatabases(): Promise<void> {
+        try {
+            const configs = DbConfig.buildAll();
+            await DbManager.getInstance().initialize(configs);
+
+            // ── Per-model bindings go here ──
+            // Example: bind the analytics model to a dedicated connection
+            //   DbManager.getInstance().bindModel({
+            //     modelName: "AnalyticsModel",
+            //     connectionName: "analytics-pg",
+            //   });
+            //
+            // Example: bind UserModel to MongoDB
+            //   DbManager.getInstance().bindModel({
+            //     modelName: "UserModel",
+            //     connectionName: "mongodb",
+            //   });
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : String(error);
+            Logger.getInstance().error(`Database :: Initialisation failed: ${msg}`);
+            // Re-throw — app cannot function without a DB
+            throw error;
+        }
+    }
+
     public _close(): Promise<void> {
         Logger.getInstance().info("Server :: Stopping...");
         return new Promise((resolve) => {
-            this._server.close(() => {
+            this._server.close(async () => {
+                await DbManager.getInstance().shutdown();
                 Logger.getInstance().info("Server :: Stopped");
                 resolve();
             });
