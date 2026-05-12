@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { IDbAdapter } from "../../interfaces/core/database";
+import { DbRegistry } from "./DbRegistry";
 
 vi.mock("../logger", () => ({
   default: {
@@ -11,7 +12,7 @@ vi.mock("../logger", () => ({
   },
 }));
 
-import { DbRegistry } from "./DbRegistry";
+
 
 const makeAdapter = (name: string, pingResult = true): IDbAdapter => ({
   name,

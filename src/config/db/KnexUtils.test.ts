@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TimestampPrecision } from "./KnexUtils";
-
+import { KnexUtils } from "./KnexUtils";
 // Build a minimal Knex-shaped stub.
 // raw() is what we assert on — it must capture (sql, bindings) and return an
 // object that carries them so tests can inspect without a real DB.
@@ -12,7 +12,7 @@ const makeKnexStub = (driverName: string) => {
   } as any;
 };
 
-import { KnexUtils } from "./KnexUtils";
+
 
 const ALL_PRECISIONS: TimestampPrecision[] = ["second", "minute", "hour", "day"];
 

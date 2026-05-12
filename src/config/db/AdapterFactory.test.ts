@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { IDbConnectionConfig } from "../../interfaces/core/database";
+import { AdapterFactory } from "./AdapterFactory";
+import { MongooseAdapter } from "./adapters/MongooseAdapter";
+import { KnexAdapter } from "./adapters/KnexAdapter";
 
 // To mock a class used with `new`, provide a real class (not an arrow function)
 // inside the vi.mock factory. The spy is accessed via the imported binding after
@@ -25,9 +28,7 @@ vi.mock("./adapters/KnexAdapter", () => ({
   },
 }));
 
-import { AdapterFactory } from "./AdapterFactory";
-import { MongooseAdapter } from "./adapters/MongooseAdapter";
-import { KnexAdapter } from "./adapters/KnexAdapter";
+
 
 const cfg = (driver: IDbConnectionConfig["driver"], name = "conn"): IDbConnectionConfig => ({
   name,

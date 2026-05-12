@@ -1,11 +1,12 @@
 import type { NextFunction, Request, Response } from "express";
-import type { IUserModel } from "../../entities/user";
+import type { IUser } from "../entities/user/core";  // Database-agnostic user type
 
 /**
  * Define custom Express's Request interface
+ * Now works with any database backend!
  */
 export interface IRequest extends Request {
-  currentUser?: IUserModel;
+  currentUser?: IUser;  // Always the agnostic type, regardless of DB
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import swaggerJsdoc from "swagger-jsdoc";
 import SwaggerDocs from "./swagger";
-
+import EnvConfig from "./env";
 // Define the OpenAPI spec type for testing
 interface OpenAPISpec {
     openapi: string;
@@ -59,8 +59,7 @@ vi.mock("./env", () => {
     };
 });
 
-// Import the mocked module to get references to the mock functions
-import EnvConfig from "./env";
+
 
 describe("SwaggerDocs", () => {
     beforeEach(() => {

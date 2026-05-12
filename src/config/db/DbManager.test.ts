@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { IDbConnectionConfig, IDbAdapter } from "../../interfaces/core/database";
+import DbManager from "./DbManager";
+import { AdapterFactory } from "./AdapterFactory";
 
 vi.mock("../logger", () => ({
   default: {
@@ -31,8 +33,6 @@ vi.mock("./AdapterFactory", () => ({
   },
 }));
 
-import DbManager from "./DbManager";
-import { AdapterFactory } from "./AdapterFactory";
 
 const mongoConfig = (overrides: Partial<IDbConnectionConfig> = {}): IDbConnectionConfig => ({
   name: "mongodb",
