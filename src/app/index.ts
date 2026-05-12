@@ -1,3 +1,4 @@
+// src/app.ts
 import express, { Application, Request, Response } from "express";
 import EnvConfig from "../config/env";
 import SwaggerDocs from "../config/swagger";
@@ -7,6 +8,8 @@ import Http from "../middlewares/Http";
 import Morgan from "../middlewares/Morgan";
 import CORS from "../middlewares/CORS";
 import ExceptionHandler from "../exceptions/Handler";
+import { DatabaseInitializer } from "../database/initializer";
+import { getRepositoryFactory } from "../config/database.config";
 
 /**
  * @name ExpressApp
@@ -26,6 +29,7 @@ class ExpressApp {
         this._mountMiddlewares();
         this._mountMonitoring();
         this._mountConfigs();
+        this._mountDatabase(); // NEW: Mount database
         this._mountRoutes();
         this._registerHandlers();
 
@@ -85,24 +89,61 @@ class ExpressApp {
         this.express = SwaggerDocs.init(this.express);
     }
 
+    private _mountDatabase(): void {
+        // Make repositories available to routes via middleware
+        this.express.use((req: Request, res: Response, next: any) => {
+            try {
+                if (DatabaseInitializer.isInitialized()) {
+                    const repoFactory = getRepositoryFactory();
+                    req.repositories = {
+                        user: repoFactory.getRepository('User'),
+                        post: repoFactory.getRepository('Post'),
+                        comment: repoFactory.getRepository('Comment'),
+                        like: repoFactory.getRepository('Like'),
+                        otp: repoFactory.getRepository('Otp'),
+                        token: repoFactory.getRepository('Token'),
+                    };
+                }
+                next();
+            } catch (error) {
+                // If database not initialized yet, just proceed without repos
+                next();
+            }
+        });
+
+        Logger.getInstance().info("Database :: Repository middleware mounted");
+    }
+
     private _mountRoutes(): void {
         const config = EnvConfig.getConfig();
         const apiPrefix = config.API_PREFIX ?? "api";
 
         // Health / probe routes
-        this.express.get("/health", (_req: Request, res: Response) => {
+        this.express.get("/health", async (_req: Request, res: Response) => {
             const cfg = EnvConfig.getConfig();
+            const dbHealth = DatabaseInitializer.isInitialized()
+                ? await DatabaseInitializer.healthCheck()
+                : { error: "Not initialized" };
+
             res.status(200).json({
                 status: "OK",
                 environment: cfg.NODE_ENV,
                 maintenance: cfg.SERVER_MAINTENANCE,
+                database: dbHealth,
+                databaseMode: DatabaseInitializer.isInitialized()
+                    ? getRepositoryFactory() ? "connected" : "initialized"
+                    : "pending",
                 timestamp: new Date().toISOString(),
                 version: "1.0.0",
             });
         });
 
         this.express.get("/ready", (_req: Request, res: Response) => {
-            res.status(200).json({ status: "ready" });
+            const isDbReady = DatabaseInitializer.isInitialized();
+            res.status(isDbReady ? 200 : 503).json({
+                status: isDbReady ? "ready" : "not ready",
+                database: isDbReady ? "connected" : "disconnected"
+            });
         });
 
         this.express.get("/live", (_req: Request, res: Response) => {
@@ -131,6 +172,10 @@ class ExpressApp {
                     metrics: "http://localhost:9464/metrics",
                     prometheus_port: 9464,
                 },
+                database: {
+                    configured: this._getConfiguredDatabases(),
+                    mode: DatabaseInitializer.isInitialized() ? "active" : "pending",
+                },
                 timestamp: new Date().toISOString(),
             });
         });
@@ -141,18 +186,31 @@ class ExpressApp {
                 environment: cfg.NODE_ENV,
                 maintenance: cfg.SERVER_MAINTENANCE,
                 apiUrl: EnvConfig.getApiUrl(),
+                database: {
+                    defaultDb: EnvConfig.getDefaultDb(),
+                    configured: this._getConfiguredDatabases(),
+                },
                 timestamp: new Date().toISOString(),
             });
         });
 
-        this.express.get(`/${apiPrefix}/users`, (_req: Request, res: Response) => {
-            Monitoring.getInstance().incrementExternalApiCall("user_list");
-            res.json({
-                users: [
-                    { id: 1, name: "John Doe" },
-                    { id: 2, name: "Jane Doe" },
-                ],
-            });
+        // Example routes that use repositories
+        this.express.get(`/${apiPrefix}/users`, async (req: Request, res: Response) => {
+            try {
+                Monitoring.getInstance().incrementExternalApiCall("user_list");
+
+                // Get repositories from request (injected by middleware)
+                const repositories = (req as any).repositories;
+                if (!repositories) {
+                    return res.status(503).json({ error: "Database not ready" });
+                }
+
+                const users = await repositories.user.findMany({});
+                res.json({ users });
+            } catch (error) {
+                Logger.getInstance().error(`Error fetching users: ${error}`);
+                res.status(500).json({ error: "Internal server error" });
+            }
         });
 
         this.express.get(`/${apiPrefix}/error`, (_req: Request, _res: Response) => {
@@ -163,11 +221,18 @@ class ExpressApp {
         Logger.getInstance().info("Routes :: Mounted");
     }
 
+    private _getConfiguredDatabases(): string[] {
+        const config = EnvConfig.getConfig();
+        const configured: string[] = [];
+        if (config.MONGO_URI) configured.push('mongodb');
+        if (config.PG_HOST && config.PG_DATABASE) configured.push('postgres');
+        if (config.MYSQL_HOST && config.MYSQL_DATABASE) configured.push('mysql');
+        if (config.SQLITE_FILENAME) configured.push('sqlite');
+        return configured;
+    }
+
     /**
      * Error handlers must be registered AFTER all routes.
-     * Order is: logErrors → clientErrorHandler → errorHandler → notFoundHandler (last).
-     * notFoundHandler uses a wildcard catch-all so it must sit at the very end,
-     * after the error middleware chain, otherwise Express swallows thrown errors into 404.
      */
     private _registerHandlers(): void {
         Logger.getInstance().info("App :: Registering handlers...");
@@ -189,60 +254,81 @@ class ExpressApp {
     public async _init(): Promise<void> {
         Logger.getInstance().info("Server :: Starting...");
 
-        const port = EnvConfig.getConfig().PORT;
+        try {
+            // Initialize database BEFORE starting server
+            await DatabaseInitializer.initialize();
 
-        this._server = this.express
-            .listen(port, () => {
-                const config = EnvConfig.getConfig();
-                const envIcon: Record<string, string> = {
-                    development: "🚀",
-                    staging: "🧪",
-                    production: "🌍",
-                    test: "🧪",
-                };
+            const port = EnvConfig.getConfig().PORT;
 
-                Logger.getInstance().info(
-                    `${envIcon[config.NODE_ENV]} Server running on ${EnvConfig.getApiUrl()}`
-                );
-                Logger.getInstance().info(
-                    `📦 Environment: ${config.NODE_ENV.toUpperCase()}`
-                );
-                Logger.getInstance().info(
-                    `🔧 Maintenance Mode: ${config.SERVER_MAINTENANCE ? "ON" : "OFF"}`
-                );
-                Logger.getInstance().info(
-                    `📊 Prometheus metrics: http://localhost:9464/metrics`
-                );
+            this._server = this.express
+                .listen(port, () => {
+                    const config = EnvConfig.getConfig();
+                    const envIcon: Record<string, string> = {
+                        development: "🚀",
+                        staging: "🧪",
+                        production: "🌍",
+                        test: "🧪",
+                    };
 
-                if (
-                    config.NODE_ENV !== "production" ||
-                    process.env["ENABLE_SWAGGER"] === "true"
-                ) {
                     Logger.getInstance().info(
-                        `📚 API Documentation: ${EnvConfig.getApiUrl()}/api-docs`
+                        `${envIcon[config.NODE_ENV]} Server running on ${EnvConfig.getApiUrl()}`
                     );
-                }
-            })
-            .on("error", (err: Error) => {
-                Logger.getInstance().error(`Server error: ${err.message}`);
-            });
+                    Logger.getInstance().info(
+                        `📦 Environment: ${config.NODE_ENV.toUpperCase()}`
+                    );
+                    Logger.getInstance().info(
+                        `🔧 Maintenance Mode: ${config.SERVER_MAINTENANCE ? "ON" : "OFF"}`
+                    );
+                    Logger.getInstance().info(
+                        `📊 Prometheus metrics: http://localhost:9464/metrics`
+                    );
+                    Logger.getInstance().info(
+                        `🗄️  Database Mode: ${DatabaseInitializer.isInitialized() ? "Connected" : "Failed"}`
+                    );
 
-        this._setupGracefulShutdown();
+                    if (
+                        config.NODE_ENV !== "production" ||
+                        process.env["ENABLE_SWAGGER"] === "true"
+                    ) {
+                        Logger.getInstance().info(
+                            `📚 API Documentation: ${EnvConfig.getApiUrl()}/api-docs`
+                        );
+                    }
+                })
+                .on("error", (err: Error) => {
+                    Logger.getInstance().error(`Server error: ${err.message}`);
+                });
 
-        Logger.getInstance().info("App :: Started");
+            this._setupGracefulShutdown();
+            Logger.getInstance().info("App :: Started");
+        } catch (error) {
+            Logger.getInstance().error(`Failed to start server: ${error}`);
+            throw error;
+        }
     }
 
     /**
-     * Closes the HTTP server. The caller (e.g. src/index.ts) owns the
-     * shutdown decision — no process.exit() here.
+     * Closes the HTTP server and database connections.
      */
-    public _close(): Promise<void> {
+    public async _close(): Promise<void> {
         Logger.getInstance().info("Server :: Stopping...");
+
+        // Close database connections first
+        // await DatabaseInitializer.shutdown();
+        if (DatabaseInitializer.isInitialized()) {
+            await DatabaseInitializer.shutdown();
+        }
+
+        // Then close server
         return new Promise((resolve) => {
-            this._server.close(() => {
-                Logger.getInstance().info("Server :: Stopped");
+            if (this._server) {
+                this._server.close(() => {
+                    Logger.getInstance().info("Server :: Stopped");
+                    resolve();
+                });
+            } else {
                 resolve();
-            });
+            }
         });
     }
 
