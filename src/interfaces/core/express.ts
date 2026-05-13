@@ -1,19 +1,20 @@
-import type { NextFunction, Request, Response } from "express";
-import type { IUserModel } from "../../entities/user";
+import type { NextFunction, Request, Response } from 'express';
 
-/**
- * Define custom Express's Request interface
- */
-export interface IRequest extends Request {
-  currentUser?: IUserModel;
+/** Minimal user shape for authenticated requests. */
+export interface ICurrentUser {
+    id: string;
+    email: string;
 }
 
 /**
- * Define custom Express's Response interface
+ * Extended Express Request.
+ * Use req.currentUser after auth middleware runs.
+ * Use req.repoFactory (declared in interfaces/express.d.ts) for repositories.
  */
-export interface IResponse extends Response { }
+export interface IRequest extends Request {
+    currentUser?: ICurrentUser;
+}
 
-/**
- * Define custom Express's NextFunction interface
- */
-export interface INext extends NextFunction { }
+export interface IResponse extends Response {}
+
+export interface INext extends NextFunction {}

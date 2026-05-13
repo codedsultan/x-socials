@@ -1,47 +1,42 @@
 /**
- * Main Application Entry Point
+ * Application entry point — composition root.
+ *
+ * All objects are wired here explicitly. Nothing reaches for getInstance()
+ * chains mid-graph. Dependencies flow down via constructors.
  */
-import "./instrumentation";
-import ExpressApp from "./app";
-import Logger from "./logger";
+import './instrumentation';
+import { ExpressApp }          from './app';
+import { DatabaseInitializer } from './database/initializer';
+import ConfigService from './config/config.service';
+import Logger from './logger';
 
-const main = (): void => {
-    // Run the Server
-    Logger.getInstance().info("App :: Starting...");
-    Logger.getInstance().info(`App :: Environment: ${process.env.NODE_ENV || "development"}`);
+const main = async (): Promise<void> => {
+    const logger = Logger.getInstance();
+    logger.info('App :: Starting...');
+    logger.info(`App :: Environment: ${process.env['NODE_ENV'] ?? 'development'}`);
 
-    // Initialize Express App (starts the server)
-    ExpressApp._init();
+    // Wire the object graph — all dependencies explicit
+    const dbConfig = ConfigService.getDatabaseConfig();
+    const db       = new DatabaseInitializer(dbConfig);
+    const app      = new ExpressApp(db);
+
+    await app._init();
+    logger.info('App :: Successfully started');
 };
 
-/**
- * Booting MainApp
- */
+process.on('uncaughtException', (error: Error) => {
+    Logger.getInstance().error(`Uncaught Exception: ${error.message}\n${error.stack ?? ''}`);
+    setTimeout(() => process.exit(1), 1000);
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    Logger.getInstance().error(`Unhandled Rejection: ${error.message}\n${error.stack ?? ''}`);
+    setTimeout(() => process.exit(1), 1000);
+});
+
+process.on('warning', (warning: Error) =>
+    Logger.getInstance().warn(`Warning: ${warning.message}`)
+);
+
 main();
-
-// Handle graceful shutdown
-process.on("SIGINT", () => {
-    Logger.getInstance().info("App :: Shutting down gracefully...");
-    process.exit(0);
-});
-
-// Handle uncaught exceptions
-process.on("uncaughtException", (error: Error) => {
-    Logger.getInstance().error(`Uncaught Exception: ${error.message}`);
-    Logger.getInstance().error(error.stack || "");
-
-    // Graceful shutdown
-    setTimeout(() => {
-        process.exit(1);
-    }, 1000);
-});
-
-// Handle unhandled promise rejections
-process.on("unhandledRejection", (reason: any, promise: Promise<any>) => {
-    Logger.getInstance().error(`Unhandled Rejection at: ${promise}, reason: ${reason}`);
-
-    // Graceful shutdown
-    setTimeout(() => {
-        process.exit(1);
-    }, 1000);
-});
