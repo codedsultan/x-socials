@@ -1,142 +1,154 @@
-import express, { Application, Request, Response } from "express";
-import EnvConfig from "../config/env";
-import SwaggerDocs from "../config/swagger";
-import Logger from "../logger";
-import Monitoring from "../monitoring";
-import Http from "../middlewares/Http";
-import Morgan from "../middlewares/Morgan";
-import CORS from "../middlewares/CORS";
-import ExceptionHandler from "../exceptions/Handler";
+import express, { type Application, type Request, type Response, type NextFunction } from 'express';
+import EnvConfig    from '../config/env';
+import SwaggerDocs  from '../config/swagger';
+import Logger       from '../logger';
+import Monitoring   from '../monitoring';
+import Http         from '../middlewares/Http';
+import Morgan       from '../middlewares/Morgan';
+import CORS         from '../middlewares/CORS';
+import ExceptionHandler from '../exceptions/Handler';
+import { DatabaseInitializer } from '../database/initializer';
+import { shutdownTelemetry }  from '../instrumentation';
 
 /**
- * @name ExpressApp
- * @description Instance-based Express application wrapper.
- * Construct once; call _init() to start listening.
+ * ExpressApp wraps the Express application.
+ *
+ * Key changes from original:
+ *  - Exported as a CLASS, not `new ExpressApp()` — tests instantiate their own.
+ *  - Receives a DatabaseInitializer via constructor (dependency injection).
+ *  - req.repoFactory is the injection point — no flat `req.repositories`.
+ *  - _init() starts the server; constructor only configures middleware/routes.
  */
-class ExpressApp {
-    public express: Application;
-    private _server: any;
+export class ExpressApp {
+    /** Mutable internally (middleware mounts reassign it); read-only to consumers via getter. */
+    private _app: Application;
+    private server: ReturnType<Application['listen']> | null = null;
 
-    constructor() {
-        Logger.getInstance().info("App :: Initializing...");
+    /** Public read-only surface for tests and supertest. */
+    get express(): Application { return this._app; }
 
-        this.express = express();
+    constructor(private readonly db: DatabaseInitializer) {
+        Logger.getInstance().info('App :: Initializing...');
+
+        this._app = express();
 
         this._mountLogger();
         this._mountMiddlewares();
         this._mountMonitoring();
         this._mountConfigs();
+        this._mountDatabaseMiddleware();
         this._mountRoutes();
         this._registerHandlers();
 
-        Logger.getInstance().info("App :: Initialized");
+        Logger.getInstance().info('App :: Initialized');
     }
 
-    // ─── private setup steps ────────────────────────────────────────────────
+    // ── private setup ──────────────────────────────────────────────────────
 
     private _mountLogger(): void {
         Logger._init();
-        Logger.getInstance().info("Logger :: Mounted");
+        Logger.getInstance().info('Logger :: Mounted');
     }
 
     private _mountMiddlewares(): void {
-        Logger.getInstance().info("App :: Registering middlewares...");
+        this._app = Http.mount(this._app);
+        this._app = Morgan.mount(this._app);
 
-        // Security, compression, body parsing
-        this.express = Http.mount(this.express);
-
-        // HTTP request logging via Morgan → Winston
-        this.express = Morgan.mount(this.express);
-
-        // CORS — opt-out via CORS_ENABLED=false
         if (EnvConfig.getConfig().CORS_ENABLED) {
-            this.express = CORS.mount(this.express);
+            this._app = CORS.mount(this._app);
         }
 
-        // Environment-specific headers
-        this.express.use((_req: Request, res: Response, next: any) => {
-            res.setHeader("X-Environment", EnvConfig.getConfig().NODE_ENV);
-            res.setHeader("X-API-Version", "1.0.0");
+        this._app.use((_req: Request, res: Response, next: NextFunction) => {
+            res.setHeader('X-Environment', EnvConfig.getConfig().NODE_ENV);
+            res.setHeader('X-API-Version', '1.0.0');
             next();
         });
 
-        // Maintenance mode check
-        this.express.use((req: Request, res: Response, next: any) => {
-            if (EnvConfig.isServerMaintenance() && req.path !== "/health") {
-                res.status(503).json({
-                    error: "Server is under maintenance. Please try again later.",
-                    environment: EnvConfig.getConfig().NODE_ENV,
-                });
+        this._app.use((req: Request, res: Response, next: NextFunction) => {
+            if (EnvConfig.isServerMaintenance() && req.path !== '/health') {
+                res.status(503).json({ error: 'Server is under maintenance. Please try again later.' });
             } else {
                 next();
             }
         });
 
-        Logger.getInstance().info("App :: Middlewares registered");
+        Logger.getInstance().info('App :: Middlewares registered');
     }
 
     private _mountMonitoring(): void {
-        this.express.use(Monitoring.getInstance().middleware());
-        Logger.getInstance().info("Monitoring :: Metrics middleware initialized");
+        this._app.use(Monitoring.getInstance().middleware());
+        Logger.getInstance().info('Monitoring :: Metrics middleware initialized');
     }
 
     private _mountConfigs(): void {
-        this.express = EnvConfig.init(this.express);
-        this.express = SwaggerDocs.init(this.express);
+        this._app = EnvConfig.init(this._app);
+        this._app = SwaggerDocs.init(this._app);
+    }
+
+    /**
+     * Inject the RepositoryFactory onto req.repoFactory.
+     * Routes call req.repoFactory.getRepository('User') etc.
+     */
+    private _mountDatabaseMiddleware(): void {
+        this._app.use((req: Request, _res: Response, next: NextFunction) => {
+            if (this.db.isInitialized()) {
+                req.repoFactory = this.db.getContainer().factory;
+            }
+            next();
+        });
+        Logger.getInstance().info('Database :: repository middleware mounted');
     }
 
     private _mountRoutes(): void {
-        const config = EnvConfig.getConfig();
-        const apiPrefix = config.API_PREFIX ?? "api";
+        const cfg = EnvConfig.getConfig();
+        const prefix = cfg.API_PREFIX ?? 'api';
 
-        // Health / probe routes
-        this.express.get("/health", (_req: Request, res: Response) => {
-            const cfg = EnvConfig.getConfig();
+        // ── probes ────────────────────────────────────────────────────────
+        this._app.get('/health', async (_req: Request, res: Response) => {
+            const dbHealth = this.db.isInitialized()
+                ? await this.db.healthCheck()
+                : { error: 'not initialized' };
+
             res.status(200).json({
-                status: "OK",
+                status: 'OK',
                 environment: cfg.NODE_ENV,
                 maintenance: cfg.SERVER_MAINTENANCE,
+                database: dbHealth,
                 timestamp: new Date().toISOString(),
-                version: "1.0.0",
+                version: '1.0.0',
             });
         });
 
-        this.express.get("/ready", (_req: Request, res: Response) => {
-            res.status(200).json({ status: "ready" });
+        this._app.get('/ready', (_req: Request, res: Response) => {
+            const ready = this.db.isInitialized();
+            res.status(ready ? 200 : 503).json({
+                status: ready ? 'ready' : 'not ready',
+                database: ready ? 'connected' : 'disconnected',
+            });
         });
 
-        this.express.get("/live", (_req: Request, res: Response) => {
-            res.status(200).json({ status: "alive" });
+        this._app.get('/live', (_req: Request, res: Response) => {
+            res.status(200).json({ status: 'alive' });
         });
 
-        // Root
-        this.express.get("/", (_req: Request, res: Response) => {
-            const cfg = EnvConfig.getConfig();
+        // ── root ──────────────────────────────────────────────────────────
+        this._app.get('/', (_req: Request, res: Response) => {
             const messages: Record<string, string> = {
-                development: "🚀 Development Server - Social Media API",
-                staging: "🧪 Staging Server - Social Media API (Testing)",
-                production: "🌍 Production Server - Social Media API",
-                test: "🧪 Test Server - Social Media API",
+                development: '🚀 Development Server - Social Media API',
+                staging:     '🧪 Staging Server - Social Media API',
+                production:  '🌍 Production Server - Social Media API',
+                test:        '🧪 Test Server - Social Media API',
             };
-
             res.json({
-                message: messages[cfg.NODE_ENV] ?? messages["development"],
+                message: messages[cfg.NODE_ENV] ?? messages['development'],
                 environment: cfg.NODE_ENV,
-                version: "1.0.0",
-                documentation:
-                    cfg.NODE_ENV === "production" && !process.env["ENABLE_SWAGGER"]
-                        ? "Documentation available at https://docs.yourdomain.com"
-                        : "/api-docs",
-                monitoring: {
-                    metrics: "http://localhost:9464/metrics",
-                    prometheus_port: 9464,
-                },
+                version: '1.0.0',
+                documentation: cfg.NODE_ENV !== 'production' ? '/api-docs' : 'https://docs.yourdomain.com',
                 timestamp: new Date().toISOString(),
             });
         });
 
-        this.express.get(`/${apiPrefix}/environment`, (_req: Request, res: Response) => {
-            const cfg = EnvConfig.getConfig();
+        this._app.get(`/${prefix}/environment`, (_req: Request, res: Response) => {
             res.json({
                 environment: cfg.NODE_ENV,
                 maintenance: cfg.SERVER_MAINTENANCE,
@@ -145,117 +157,85 @@ class ExpressApp {
             });
         });
 
-        this.express.get(`/${apiPrefix}/users`, (_req: Request, res: Response) => {
-            Monitoring.getInstance().incrementExternalApiCall("user_list");
-            res.json({
-                users: [
-                    { id: 1, name: "John Doe" },
-                    { id: 2, name: "Jane Doe" },
-                ],
-            });
+        // ── example resource route ────────────────────────────────────────
+        this._app.get(`/${prefix}/users`, async (req: Request, res: Response): Promise<void> => {
+            try {
+                Monitoring.getInstance().incrementExternalApiCall('user_list');
+
+                if (!req.repoFactory) {
+                    res.status(503).json({ error: 'Database not ready' });
+                    return;
+                }
+
+                const users = await req.repoFactory.getRepository('User').findMany({});
+                res.json({ users });
+            } catch (error) {
+                Logger.getInstance().error(`Error fetching users: ${error}`);
+                res.status(500).json({ error: 'Internal server error' });
+            }
         });
 
-        this.express.get(`/${apiPrefix}/error`, (_req: Request, _res: Response) => {
-            Monitoring.getInstance().recordError("TestError", `/${apiPrefix}/error`);
-            throw new Error("Test error for monitoring");
+        this._app.get(`/${prefix}/error`, (_req: Request, _res: Response) => {
+            Monitoring.getInstance().recordError('TestError', `/${prefix}/error`);
+            throw new Error('Test error for monitoring');
         });
 
-        Logger.getInstance().info("Routes :: Mounted");
+        Logger.getInstance().info('Routes :: Mounted');
     }
 
-    /**
-     * Error handlers must be registered AFTER all routes.
-     * Order is: logErrors → clientErrorHandler → errorHandler → notFoundHandler (last).
-     * notFoundHandler uses a wildcard catch-all so it must sit at the very end,
-     * after the error middleware chain, otherwise Express swallows thrown errors into 404.
-     */
     private _registerHandlers(): void {
-        Logger.getInstance().info("App :: Registering handlers...");
-
-        this.express.use(ExceptionHandler.logErrors);
-        this.express.use(ExceptionHandler.clientErrorHandler);
-        this.express.use(ExceptionHandler.errorHandler);
-        this.express = ExceptionHandler.notFoundHandler(this.express);
-
-        Logger.getInstance().info("App :: Handlers registered");
+        this._app.use(ExceptionHandler.logErrors);
+        this._app.use(ExceptionHandler.clientErrorHandler);
+        this._app.use(ExceptionHandler.errorHandler);
+        this._app = ExceptionHandler.notFoundHandler(this._app);
     }
 
-    // ─── public API ─────────────────────────────────────────────────────────
+    // ── public lifecycle ───────────────────────────────────────────────────
 
-    /**
-     * Starts the HTTP server. Separated from the constructor so tests can
-     * import and inspect the app without binding a port.
-     */
-    public async _init(): Promise<void> {
-        Logger.getInstance().info("Server :: Starting...");
+    async _init(): Promise<void> {
+        Logger.getInstance().info('Server :: Starting...');
+
+        await this.db.initialize();
 
         const port = EnvConfig.getConfig().PORT;
-
-        this._server = this.express
-            .listen(port, () => {
-                const config = EnvConfig.getConfig();
-                const envIcon: Record<string, string> = {
-                    development: "🚀",
-                    staging: "🧪",
-                    production: "🌍",
-                    test: "🧪",
-                };
-
-                Logger.getInstance().info(
-                    `${envIcon[config.NODE_ENV]} Server running on ${EnvConfig.getApiUrl()}`
-                );
-                Logger.getInstance().info(
-                    `📦 Environment: ${config.NODE_ENV.toUpperCase()}`
-                );
-                Logger.getInstance().info(
-                    `🔧 Maintenance Mode: ${config.SERVER_MAINTENANCE ? "ON" : "OFF"}`
-                );
-                Logger.getInstance().info(
-                    `📊 Prometheus metrics: http://localhost:9464/metrics`
-                );
-
-                if (
-                    config.NODE_ENV !== "production" ||
-                    process.env["ENABLE_SWAGGER"] === "true"
-                ) {
-                    Logger.getInstance().info(
-                        `📚 API Documentation: ${EnvConfig.getApiUrl()}/api-docs`
-                    );
-                }
-            })
-            .on("error", (err: Error) => {
-                Logger.getInstance().error(`Server error: ${err.message}`);
-            });
+        this.server = this._app.listen(port, () => {
+            const c = EnvConfig.getConfig();
+            Logger.getInstance().info(`🚀 Server running on ${EnvConfig.getApiUrl()}`);
+            Logger.getInstance().info(`📦 Environment: ${c.NODE_ENV.toUpperCase()}`);
+            Logger.getInstance().info(`🗄️  Database mode: active`);
+        }).on('error', (err: Error) => {
+            Logger.getInstance().error(`Server error: ${err.message}`);
+        });
 
         this._setupGracefulShutdown();
-
-        Logger.getInstance().info("App :: Started");
+        Logger.getInstance().info('App :: Started');
     }
 
-    /**
-     * Closes the HTTP server. The caller (e.g. src/index.ts) owns the
-     * shutdown decision — no process.exit() here.
-     */
-    public _close(): Promise<void> {
-        Logger.getInstance().info("Server :: Stopping...");
+    async _close(): Promise<void> {
+        Logger.getInstance().info('Server :: Stopping...');
+        await shutdownTelemetry();
+        await this.db.shutdown();
         return new Promise((resolve) => {
-            this._server.close(() => {
-                Logger.getInstance().info("Server :: Stopped");
+            if (this.server) {
+                this.server.close(() => {
+                    Logger.getInstance().info('Server :: Stopped');
+                    resolve();
+                });
+            } else {
                 resolve();
-            });
+            }
         });
     }
 
     private _setupGracefulShutdown(): void {
-        const shutdown = async () => {
-            Logger.getInstance().info("Shutting down gracefully...");
+        const shutdown = async (): Promise<void> => {
+            Logger.getInstance().info('Shutting down gracefully...');
             await this._close();
             process.exit(0);
         };
-
-        process.on("SIGTERM", shutdown);
-        process.on("SIGINT", shutdown);
+        process.on('SIGTERM', shutdown);
+        process.on('SIGINT', shutdown);
     }
 }
 
-export default new ExpressApp();
+export default ExpressApp;
