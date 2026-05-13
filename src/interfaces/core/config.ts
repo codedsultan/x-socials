@@ -1,11 +1,23 @@
 /**
- * Define EnvConfig interface
+ * @file src/interfaces/core/config.ts
+ * @description Core configuration interfaces.
+ *              Database connection config has been moved to
+ *              src/interfaces/core/database.ts — IEnvConfig now only holds
+ *              the generic app-level DB env vars (legacy support).
  */
+
+// ─── Environment ─────────────────────────────────────────────────────────────
 
 export type Environment = "development" | "staging" | "production" | "test";
 
+// ─── Application env config ──────────────────────────────────────────────────
+
 /**
- * Core environment configuration (required fields)
+ * Core environment configuration (required fields).
+ *
+ * Database connections are configured via the DB_* / MONGO_URI / PG_* /
+ * MYSQL_* / SQLITE_* env vars read by DbConfig.buildAll().
+ * See src/interfaces/core/database.ts for the full connection shape.
  */
 export interface IEnvConfig {
   PORT: number;
@@ -50,27 +62,26 @@ export interface IEnvConfig {
   // API
   API_PREFIX?: string;
 
-  // CORS & logging
+  // ── CORS & logging ──
   CORS_ENABLED: boolean;
   LOG_DAYS?: number;
 
-  // Auth
+  // ── Auth ──
   JWT_SECRET?: string;
   JWT_EXPIRES_IN?: string;
 
-  // Email
+  // ── Email ──
   SENDGRID_API_KEY?: string;
   SMTP_FROM?: string;
 
-  // Cloudinary
+  // ── Cloudinary ──
   CLOUDINARY_CLOUD_NAME?: string;
   CLOUDINARY_API_KEY?: string;
   CLOUDINARY_API_SECRET?: string;
 }
 
-/**
- * Firebase configuration interface
- */
+// ─── Firebase ────────────────────────────────────────────────────────────────
+
 export interface IFirebaseConfig {
   FIREBASE_TYPE?: string;
   FIREBASE_PROJECT_ID?: string;
@@ -84,9 +95,8 @@ export interface IFirebaseConfig {
   FIREBASE_CLIENT_X509_CERT_URL?: string;
 }
 
-/**
- * Extended config with helper methods
- */
+// ─── Extended config with helper methods ─────────────────────────────────────
+
 export interface IEnvConfigWithHelpers extends IEnvConfig {
   isProduction(): boolean;
   isStaging(): boolean;
