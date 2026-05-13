@@ -67,5 +67,10 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "pnpm": {
+    "overrides": {
+      "protobufjs": "^8.0.2"
+    }
   }
 }
