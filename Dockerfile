@@ -29,9 +29,9 @@ RUN pnpm build
 
 # # RUN npx tsc -p tsconfig.scripts.json
 # IMPORTANT: Also compile migration scripts
-RUN mkdir -p dist/scripts && \
+RUN mkdir -p dist && \
     npx tsc scripts/**/*.ts \
-    --outDir dist/scripts \
+    --outDir dist \
     --target ES2022 \
     --module ES2022 \
     --moduleResolution bundler \
