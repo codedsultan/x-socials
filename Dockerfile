@@ -88,7 +88,7 @@ RUN echo "=== Compiling knexfile ===" && \
 # Compile database scripts to database/scripts/ (NOT inside dist/)
 RUN echo "=== Compiling database scripts ===" && \
     mkdir -p database/scripts && \
-    npx tsc "database/scripts/**/*.ts" \
+    npx tsc database/scripts/**/*.ts \
     --outDir database/scripts \
     --target ES2022 \
     --module CommonJS \
@@ -97,7 +97,6 @@ RUN echo "=== Compiling database scripts ===" && \
     --resolveJsonModule \
     --skipLibCheck \
     --ignoreConfig
-
 # Final verification - shows both dist/ and database/ as siblings
 RUN echo "=== Final verification ===" && \
     echo "📁 Project root contents:" && \
