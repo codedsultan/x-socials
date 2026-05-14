@@ -89,7 +89,7 @@ class Monitoring {
             const startMs = Date.now();
             this.activeConnections.add(1);
 
-            res.on('finish', () => {
+            res.once('finish', () => {
                 const duration = Date.now() - startMs;
                 const attrs = {
                     'http.method': req.method,

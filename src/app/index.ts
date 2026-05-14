@@ -89,6 +89,10 @@ export class ExpressApp {
         const config = ConfigService.getServerConfig();
         const prefix = config.API_PREFIX || 'api';
 
+
+        // DEBUG: Log the actual prefix
+        Logger.getInstance().info(`=== API Prefix: "${prefix}" ===`);
+        Logger.getInstance().info(`=== Full path: /${prefix}/users ===`);
         this._app.get('/health', async (_req: Request, res: Response) => {
             const dbHealth = this.db.isInitialized()
                 ? await this.db.healthCheck()
@@ -129,6 +133,16 @@ export class ExpressApp {
                 version: '1.0.0',
                 documentation: config.NODE_ENV !== 'production' ? '/api-docs' : 'https://docs.yourdomain.com',
                 timestamp: new Date().toISOString(),
+            });
+        });
+
+
+        this._app.get('/api/test', (_req: Request, res: Response) => {
+            res.json({
+                message: 'Test route works!',
+                timestamp: new Date().toISOString(),
+                env: config.NODE_ENV,
+                prefix: prefix
             });
         });
 

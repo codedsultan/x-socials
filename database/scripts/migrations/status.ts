@@ -1,6 +1,6 @@
 // scripts/migrations/status.ts
-import { ConfigService } from '../../src/config/config.service';
-import { KnexAdapter } from '../../src/database/adapters/KnexAdapter';
+import { ConfigService } from '../../../src/config/config.service';
+import { KnexAdapter } from '../../../src/database/adapters/KnexAdapter';
 
 // Simple table formatter without external dependency
 function createTable(data: Array<[string, string]>): string {

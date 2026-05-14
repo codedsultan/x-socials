@@ -20,6 +20,8 @@ vi.mock('../../../database/core/DbResolver', () => ({
     DbResolver: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
         this.connectAll = vi.fn().mockResolvedValue(undefined);
         this.disconnectAll = vi.fn().mockResolvedValue(undefined);
+        this.registerModels = vi.fn().mockResolvedValue(undefined);
+        this.runMigrations = vi.fn().mockResolvedValue(undefined);
         this.registerModelsAndMigrate = vi.fn().mockResolvedValue(undefined);
         this.getConfiguredTypes = vi.fn().mockReturnValue(['mongodb']);
         this.healthCheck = vi.fn().mockResolvedValue({ mongodb: true });
@@ -85,10 +87,10 @@ describe('buildDatabaseContainer', () => {
         expect(resolver.connectAll).toHaveBeenCalled();
     });
 
-    it('calls registerModelsAndMigrate on the resolver', async () => {
+    it('calls registerModels on the resolver', async () => {
         const container = await buildDatabaseContainer(mongoOnlyConfig);
-        const resolver = container.resolver as unknown as { registerModelsAndMigrate: ReturnType<typeof vi.fn> };
-        expect(resolver.registerModelsAndMigrate).toHaveBeenCalled();
+        const resolver = container.resolver as unknown as { registerModels: ReturnType<typeof vi.fn> };
+        expect(resolver.registerModels).toHaveBeenCalled();
     });
 
     it('constructs RepositoryFactory with the resolver', async () => {

@@ -1,6 +1,6 @@
 // scripts/db/drop.ts
-import { ConfigService } from '../../src/config/config.service';
-import { KnexAdapter } from '../../src/database/adapters/KnexAdapter';
+import { ConfigService } from '../../../src/config/config.service';
+import { KnexAdapter } from '../../../src/database/adapters/KnexAdapter';
 import type { Knex } from 'knex';
 
 interface AdapterInfo {

@@ -1,3 +1,4 @@
+// src/database/core/DbResolver.ts
 import type { DbType, ModelName } from '../../interfaces/core/db-types';
 import type { IDatabaseAdapter } from '../../interfaces/db/IAdapter';
 import type { IDatabaseConfig } from '../../interfaces/core/config';
@@ -5,6 +6,7 @@ import type { ModelSchemaEntry } from '../../models/schemas';
 import { DbRegistry } from './DbRegistry';
 import { MongooseAdapter } from '../adapters/MongooseAdapter';
 import { KnexAdapter } from '../adapters/KnexAdapter';
+import Logger from '../../logger';
 
 /**
  * DbResolver owns the live adapter instances and wires them up.
@@ -14,6 +16,7 @@ import { KnexAdapter } from '../adapters/KnexAdapter';
  */
 export class DbResolver {
     private readonly adapters: Map<DbType, IDatabaseAdapter> = new Map();
+    private readonly logger = Logger.getInstance();
 
     constructor(
         configs: IDatabaseConfig,
@@ -36,6 +39,7 @@ export class DbResolver {
             migrationOptions
         ));
     }
+
     // ── lifecycle ──────────────────────────────────────────────────────────
 
     async connectAll(): Promise<void> {
@@ -47,20 +51,78 @@ export class DbResolver {
     }
 
     /**
-     * Register all model schemas with their respective adapters,
-     * then run migrations on SQL adapters.
+     * Register all model schemas with their respective adapters.
+     * This MUST ALWAYS run - models need to be registered in memory.
      */
-    async registerModelsAndMigrate(schemas: Record<string, ModelSchemaEntry>): Promise<void> {
-        // Register each model with its target adapter only
+    async registerModels(schemas: Record<string, ModelSchemaEntry>): Promise<void> {
+        this.logger.info(`[DbResolver] Registering models: ${Object.keys(schemas).join(', ')}`);
+
         for (const [modelName, schema] of Object.entries(schemas)) {
             const dbType = this.registry.getDbForModel(modelName);
+            this.logger.info(`[DbResolver] Model "${modelName}" -> database: ${dbType}`);
+
             const adapter = this.adapters.get(dbType);
-            adapter?.registerModel(modelName, schema);
+            if (!adapter) {
+                throw new Error(
+                    `No adapter configured for database type: ${dbType} (required by model: ${modelName}). ` +
+                    `Configured adapters: ${[...this.adapters.keys()].join(', ')}`
+                );
+            }
+
+            adapter.registerModel(modelName, schema);
+            this.logger.info(`[DbResolver] ✓ Registered ${modelName} with ${dbType} adapter`);
         }
 
-        // Run migrations on all SQL adapters
-        for (const adapter of this.adapters.values()) {
-            await adapter.migrate();
+        this.logger.info(`[DbResolver] Successfully registered ${Object.keys(schemas).length} models`);
+
+        // Log registration status for debugging
+        this.logRegistrationStatus();
+    }
+
+    /**
+     * Run migrations on all SQL adapters.
+     * This can be skipped in production if migrations are run manually.
+     */
+    async runMigrations(): Promise<void> {
+        this.logger.info(`[DbResolver] Running migrations on SQL adapters...`);
+
+        let migrationCount = 0;
+        for (const [dbType, adapter] of this.adapters) {
+            if (adapter.constructor.name === 'KnexAdapter') {
+                this.logger.info(`[DbResolver] Running migrations for ${dbType}`);
+                await adapter.migrate();
+                migrationCount++;
+            }
+        }
+
+        this.logger.info(`[DbResolver] Migrations completed on ${migrationCount} database(s)`);
+    }
+
+    /**
+     * Deprecated: Use registerModels() and runMigrations() separately.
+     * Kept for backward compatibility.
+     */
+    async registerModelsAndMigrate(schemas: Record<string, ModelSchemaEntry>): Promise<void> {
+        await this.registerModels(schemas);
+        await this.runMigrations();
+    }
+
+    /**
+     * Debug helper to log which models are registered with each adapter
+     */
+    private logRegistrationStatus(): void {
+        if (process.env.NODE_ENV === 'production') return;
+
+        for (const [dbType, adapter] of this.adapters) {
+            if (adapter.constructor.name === 'KnexAdapter') {
+                const knexAdapter = adapter as any;
+                const registeredModels = knexAdapter.tableDefs ? [...knexAdapter.tableDefs.keys()] : [];
+                this.logger.info(`[DbResolver] ${dbType} adapter has models: ${registeredModels.join(', ') || 'none'}`);
+            } else if (adapter.constructor.name === 'MongooseAdapter') {
+                const mongooseAdapter = adapter as any;
+                const registeredModels = mongooseAdapter.models ? Object.keys(mongooseAdapter.models) : [];
+                this.logger.info(`[DbResolver] ${dbType} adapter has models: ${registeredModels.join(', ') || 'none'}`);
+            }
         }
     }
 
@@ -86,8 +148,6 @@ export class DbResolver {
     getConfiguredTypes(): DbType[] {
         return [...this.adapters.keys()];
     }
-
-
 
     async healthCheck(): Promise<Record<string, boolean>> {
         const results: Record<string, boolean> = {};

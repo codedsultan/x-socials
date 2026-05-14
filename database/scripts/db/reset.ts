@@ -1,6 +1,6 @@
 // scripts/db/reset.ts (using spawn for better output)
 import { spawn } from 'child_process';
-import { ConfigService } from '../../src/config/config.service';
+import { ConfigService } from '../../../src/config/config.service';
 
 async function runCommand(command: string, args: string[] = []): Promise<void> {
     return new Promise((resolve, reject) => {
