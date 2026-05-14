@@ -14,49 +14,11 @@ export interface DatabaseContainer {
     factory: RepositoryFactory;
 }
 
-
 /**
- * Build database container - NO CONFIG LOADING HERE
- * Just takes config and builds connections
+ * Build database container with proper separation of concerns:
+ * - ALWAYS registers models (required for the app to work)
+ * - Optionally runs migrations (can be skipped in production)
  */
-// export async function buildDatabaseContainer(
-//     dbConfig: IDatabaseConfig
-// ): Promise<DatabaseContainer> {
-//     const logger = Logger.getInstance();
-//     const defaultDb = dbConfig.defaultDb as DbType;
-//     const dbMode = dbConfig.dbMode || 'split';
-
-//     logger.info(`Database :: mode=${dbMode}, defaultDb=${defaultDb}`);
-
-//     // Get model mapping from ConfigService
-//     const modelMapping = ConfigService.getModelMapping();
-
-//     // Create registry with model mapping
-//     const registry = new DbRegistry(modelMapping, defaultDb);
-//     if (dbMode === 'single') {
-//         registry.enableSingleMode(defaultDb);
-//         logger.info(`Database :: single-DB mode enabled → all models → ${defaultDb}`);
-//     }
-
-//     // Create resolver and connect
-//     const resolver = new DbResolver(dbConfig as any, registry);
-//     const configured = resolver.getConfiguredTypes();
-//     logger.info(`Database :: connecting to [${configured.join(', ')}]`);
-//     await resolver.connectAll();
-//     logger.info('Database :: all adapters connected');
-
-//     // Register models and migrate
-//     await resolver.registerModelsAndMigrate(ModelSchemas);
-//     logger.info('Database :: models registered and migrations complete');
-
-//     // Create factory
-//     const factory = new RepositoryFactory(resolver);
-
-//     return { registry, resolver, factory };
-// }
-
-// src/config/database.config.ts
-// src/config/database.config.ts
 export async function buildDatabaseContainer(
     dbConfig: IDatabaseConfig,
     options?: { skipMigrations?: boolean }
@@ -84,12 +46,19 @@ export async function buildDatabaseContainer(
     await resolver.connectAll();
     logger.info('Database :: all adapters connected');
 
-    // Only run migrations if not skipped
+    // CRITICAL: ALWAYS register models - this is required for the app to work!
+    // Models must be registered in memory regardless of migration settings
+    logger.info('Database :: registering models (required)...');
+    await resolver.registerModels(ModelSchemas);
+    logger.info('Database :: ✓ models registered successfully');
+
+    // Optionally run migrations (can be skipped in production if run manually)
     if (!options?.skipMigrations) {
-        await resolver.registerModelsAndMigrate(ModelSchemas);
-        logger.info('Database :: models registered and migrations complete');
+        logger.info('Database :: running migrations...');
+        await resolver.runMigrations();
+        logger.info('Database :: ✓ migrations complete');
     } else {
-        logger.info('Database :: skipping migrations');
+        logger.info('Database :: skipping migrations (models still registered)');
     }
 
     // Create factory
