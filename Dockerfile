@@ -23,11 +23,11 @@ RUN ls -la && ls -la src/ || echo "src directory not found"
 RUN pnpm build
 
 # # IMPORTANT: Also compile migration scripts (ignoring tsconfig.json)
-# RUN mkdir -p dist/scripts && \
-#     npx tsc scripts/migrations/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig && \
-#     npx tsc scripts/db/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig
+RUN mkdir -p dist/scripts && \
+    npx tsc scripts/migrations/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig && \
+    npx tsc scripts/db/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig
 
-RUN npx tsc -p tsconfig.scripts.json
+# RUN npx tsc -p tsconfig.scripts.json
 
 # Remove dev dependencies
 RUN pnpm prune --prod
