@@ -1,6 +1,6 @@
 // scripts/migrations/up.ts
-import { ConfigService } from '../../src/config/config.service';
-import { KnexAdapter } from '../../src/database/adapters/KnexAdapter';
+import { ConfigService } from '../../../src/config/config.service';
+import { KnexAdapter } from '../../../src/database/adapters/KnexAdapter';
 
 interface AdapterInfo {
     name: string;

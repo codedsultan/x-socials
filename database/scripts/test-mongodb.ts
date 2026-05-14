@@ -1,8 +1,8 @@
 // scripts/test-mongodb.ts
-import { ConfigService } from '../src/config/config.service';
-import { DatabaseInitializer } from '../src/database/initializer';
-import type { Post } from '../src/repositories/PostRepository';
-import type { PostRepository } from '../src/repositories/PostRepository';
+import { ConfigService } from '../../src/config/config.service';
+import { DatabaseInitializer } from '../../src/database/initializer';
+import type { Post } from '../../src/repositories/PostRepository';
+import type { PostRepository } from '../../src/repositories/PostRepository';
 
 async function testMongoDB() {
     console.log('Testing MongoDB connection and data...\n');

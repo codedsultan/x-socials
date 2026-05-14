@@ -23,7 +23,7 @@ export class KnexAdapter implements IDatabaseAdapter {
     constructor(config: Knex.Config, options: KnexAdapterOptions = {}) {
         this.db = knex(config);
         this.skipMigrations = options.skipMigrations ?? false;
-        this.migrationsDir = options.migrationsDir ?? path.join(__dirname, '../../database/migrations');
+        this.migrationsDir = options.migrationsDir ?? path.join(__dirname, '../../../database/migrations');
     }
 
     async connect(): Promise<void> {

@@ -1,7 +1,7 @@
 // scripts/db/seed.ts
-import { ConfigService } from '../../src/config/config.service';
-import { KnexAdapter } from '../../src/database/adapters/KnexAdapter';
-import { MongooseAdapter } from '../../src/database/adapters/MongooseAdapter';
+import { ConfigService } from '../../../src/config/config.service';
+import { KnexAdapter } from '../../../src/database/adapters/KnexAdapter';
+import { MongooseAdapter } from '../../../src/database/adapters/MongooseAdapter';
 import { v7 as uuidv7 } from 'uuid';
 import bcrypt from 'bcrypt';
 import mongoose from 'mongoose';
