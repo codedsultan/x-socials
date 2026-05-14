@@ -11,7 +11,7 @@ async function seed() {
 
     const dbConfig = ConfigService.getDatabaseConfig();
 
-    // Seed SQL Databases (MySQL, SQLite)
+    // Seed SQL Databases (SQLite, MySQL, PostgreSQL)
     const sqlAdapters: { name: string; adapter: KnexAdapter }[] = [];
 
     if (dbConfig.sqlite) {
@@ -35,6 +35,22 @@ async function seed() {
             }
         };
         sqlAdapters.push({ name: 'mysql', adapter: new KnexAdapter(config) });
+    }
+
+    // ✅ ADD POSTGRESQL SUPPORT
+    if (dbConfig.postgres) {
+        const config = {
+            client: 'pg',
+            connection: {
+                host: dbConfig.postgres.host,
+                port: dbConfig.postgres.port,
+                database: dbConfig.postgres.database,
+                user: dbConfig.postgres.user,
+                password: dbConfig.postgres.password
+            },
+            pool: { min: 0, max: 7 }
+        };
+        sqlAdapters.push({ name: 'postgres', adapter: new KnexAdapter(config) });
     }
 
     // Seed SQL data
@@ -91,7 +107,6 @@ async function seed() {
     }
 
     // Seed MongoDB
-    // In scripts/db/seed.ts, update the MongoDB seeding section
     if (dbConfig.mongodb) {
         console.log('📦 Seeding MONGODB...');
 
