@@ -5,7 +5,6 @@
 import type { Application } from "express";
 import ConfigService from "../config/config.service";
 import Logger from "../logger";
-import ApiError from "../exceptions/ApiError";
 import StatusCodes from "../constants/statusCodes";
 import StringValues from "../constants/strings";
 import type { INext, IRequest, IResponse } from "../interfaces/core/express";
@@ -77,59 +76,59 @@ class ExceptionHandler {
    * @name isUnauthorizedError
    * @description Robust check for UnauthorizedError across different environments
    */
-  private static isUnauthorizedError(err: any): boolean {
-    return (
-      err.name === "UnauthorizedError" ||
-      err.constructor?.name === "UnauthorizedError" ||
-      (err instanceof Error && err.message === "Unauthorized")
-    );
-  }
+  // private static isUnauthorizedError(err: any): boolean {
+  //   return (
+  //     err.name === "UnauthorizedError" ||
+  //     err.constructor?.name === "UnauthorizedError" ||
+  //     (err instanceof Error && err.message === "Unauthorized")
+  //   );
+  // }
 
   /**
    * @name isCastError
    * @description Robust check for Mongoose CastError
    */
-  private static isCastError(err: any): boolean {
-    return (
-      err.name === "CastError" ||
-      err.constructor?.name === "CastError" ||
-      (err.name === "CastError" && err.kind === "ObjectId")
-    );
-  }
+  // private static isCastError(err: any): boolean {
+  //   return (
+  //     err.name === "CastError" ||
+  //     err.constructor?.name === "CastError" ||
+  //     (err.name === "CastError" && err.kind === "ObjectId")
+  //   );
+  // }
 
   /**
    * @name isJwtError
    * @description Robust check for JWT-related errors
    */
-  private static isJwtError(err: any): boolean {
-    const jwtErrorNames = [
-      "JsonWebTokenError",
-      "TokenExpiredError",
-      "jsonWebTokenError",
-      "NotBeforeError",
-    ];
-    return (
-      jwtErrorNames.includes(err.name) ||
-      jwtErrorNames.includes(err.constructor?.name) ||
-      (err.message && err.message.includes("jwt"))
-    );
-  }
+  // private static isJwtError(err: any): boolean {
+  //   const jwtErrorNames = [
+  //     "JsonWebTokenError",
+  //     "TokenExpiredError",
+  //     "jsonWebTokenError",
+  //     "NotBeforeError",
+  //   ];
+  //   return (
+  //     jwtErrorNames.includes(err.name) ||
+  //     jwtErrorNames.includes(err.constructor?.name) ||
+  //     (err.message && err.message.includes("jwt"))
+  //   );
+  // }
 
   /**
    * @name isApiRoute
    * @description Check if the request is for an API route
    */
-  private static isApiRoute(req: IRequest): boolean {
-    const configService = ConfigService;
-    const apiPrefix = configService.getServerConfig().API_PREFIX;
-    const url = req.originalUrl;
+  // private static isApiRoute(req: IRequest): boolean {
+  //   const configService = ConfigService;
+  //   const apiPrefix = configService.getServerConfig().API_PREFIX;
+  //   const url = req.originalUrl;
 
-    // Check for API prefix with or without trailing slash
-    return url.includes(`/${apiPrefix}/`) ||
-      url === `/${apiPrefix}` ||
-      url.startsWith(`/${apiPrefix}/`) ||
-      url.startsWith(`/${apiPrefix}?`);
-  }
+  //   // Check for API prefix with or without trailing slash
+  //   return url.includes(`/${apiPrefix}/`) ||
+  //     url === `/${apiPrefix}` ||
+  //     url.startsWith(`/${apiPrefix}/`) ||
+  //     url.startsWith(`/${apiPrefix}?`);
+  // }
 
   /**
    * @name errorHandler

@@ -268,9 +268,9 @@ describe("ExceptionHandler.errorHandler", () => {
     const app = buildApp();
 
     // Add a proper render mock BEFORE defining routes
-    app.use((req, res, next) => {
+    app.use((_req, res, next) => {
       // Mock the render function
-      res.render = ((view: string, data: any) => {
+      res.render = ((_view: string, data: any) => {
         // Set content-type to HTML
         res.set('Content-Type', 'text/html');
         // Send HTML response
