@@ -17,39 +17,12 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Debug: List files to verify src exists
-RUN ls -la && ls -la src/ || echo "src directory not found"
+# RUN ls -la && ls -la src/ || echo "src directory not found"
 
-# Build the application (includes compiling TypeScript)
-RUN pnpm build
+# # Build the application (includes compiling TypeScript)
+# RUN pnpm build
 
 
-# Copy database assets (migrations, seeds) to dist
-RUN mkdir -p dist/database && \
-    cp -r database/migrations dist/database/ && \
-    cp -r database/seeds dist/database/ 2>/dev/null || true
-
-# Compile knexfile.ts to knexfile.js in dist
-RUN npx tsc knexfile.ts \
-    --outDir dist \
-    --target ES2022 \
-    --module CommonJS \
-    --moduleResolution bundler \
-    --esModuleInterop \
-    --resolveJsonModule \
-    --skipLibCheck \
-    --ignoreConfig
-
-# Compile database scripts (the runner scripts, not migration templates)
-RUN mkdir -p dist/database/scripts && \
-    npx tsc database/scripts/**/*.ts \
-    --outDir dist/database/scripts \
-    --target ES2022 \
-    --module CommonJS \
-    --moduleResolution bundler \
-    --esModuleInterop \
-    --resolveJsonModule \
-    --skipLibCheck \
-    --ignoreConfig
 
 # # # IMPORTANT: Also compile migration scripts (ignoring tsconfig.json)
 # RUN mkdir -p dist/scripts && \
@@ -85,12 +58,66 @@ RUN mkdir -p dist/database/scripts && \
 #     ls -la dist/scripts/db/ || echo "No db folder"
 # After building, verify the structure
 
-RUN echo "=== Verifying compiled structure ===" && \
-    ls -la dist/src/config/ && \
-    ls -la dist/src/database/adapters/ && \
-    ls -la dist/database/migrations/ && \
-    ls -la dist/database/scripts/migrations/
+# Debug: Verify source files exist
+RUN echo "=== Verifying source files ===" && \
+    ls -la && \
+    echo "=== src directory contents ===" && \
+    ls -la src/ && \
+    echo "=== Looking for entry point ===" && \
+    find src -name "index.ts" -o -name "main.ts" -o -name "app.ts" | head -5
 
+# Build the application (compile src/ to dist/src/)
+RUN echo "=== Building main application ===" && \
+    npx tsc --project tsconfig.json --listEmittedFiles && \
+    echo "=== Build complete ==="
+
+# Verify build output
+RUN echo "=== Verifying build output ===" && \
+    if [ ! -d "dist/src" ]; then \
+    echo "ERROR: dist/src not found!" && \
+    echo "dist contents:" && \
+    ls -la dist/ && \
+    exit 1; \
+    fi && \
+    echo "✅ Main app compiled successfully" && \
+    ls -la dist/src/
+
+# Copy database assets to dist
+RUN echo "=== Copying database assets ===" && \
+    mkdir -p dist/database && \
+    cp -r database/migrations dist/database/ && \
+    cp -r database/seeds dist/database/ 2>/dev/null || echo "No seeds directory"
+
+# Compile knexfile.ts
+RUN echo "=== Compiling knexfile ===" && \
+    npx tsc knexfile.ts \
+    --outDir dist \
+    --target ES2022 \
+    --module CommonJS \
+    --moduleResolution bundler \
+    --esModuleInterop \
+    --resolveJsonModule \
+    --skipLibCheck
+
+# Compile database scripts
+RUN echo "=== Compiling database scripts ===" && \
+    mkdir -p dist/database/scripts && \
+    npx tsc "database/scripts/**/*.ts" \
+    --outDir dist/database/scripts \
+    --target ES2022 \
+    --module CommonJS \
+    --moduleResolution bundler \
+    --esModuleInterop \
+    --resolveJsonModule \
+    --skipLibCheck \
+    --ignoreConfig
+
+# Final verification
+RUN echo "=== Final verification ===" && \
+    echo "Main app:" && ls -la dist/src/ | head -5 && \
+    echo "Config:" && ls -la dist/src/config/ 2>/dev/null || echo "No config dir" && \
+    echo "Migrations:" && ls -la dist/database/migrations/ | head -5 && \
+    echo "Migration scripts:" && ls -la dist/database/scripts/migrations/ | head -5
 
 # Remove dev dependencies
 RUN pnpm prune --prod
