@@ -159,6 +159,7 @@ WORKDIR /app
 
 # Copy built application from builder
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/src ./src 
 COPY --from=builder --chown=nodejs:nodejs /app/database ./database
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package.json ./
@@ -166,6 +167,7 @@ COPY --from=builder --chown=nodejs:nodejs /app/package.json ./
 # Copy health check script
 COPY --chown=nodejs:nodejs healthcheck.js ./
 
+RUN pnpm add tsx
 # Switch to non-root user
 USER nodejs
 
