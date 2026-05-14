@@ -74,6 +74,64 @@ class ExceptionHandler {
   }
 
   /**
+   * @name isUnauthorizedError
+   * @description Robust check for UnauthorizedError across different environments
+   */
+  private static isUnauthorizedError(err: any): boolean {
+    return (
+      err.name === "UnauthorizedError" ||
+      err.constructor?.name === "UnauthorizedError" ||
+      (err instanceof Error && err.message === "Unauthorized")
+    );
+  }
+
+  /**
+   * @name isCastError
+   * @description Robust check for Mongoose CastError
+   */
+  private static isCastError(err: any): boolean {
+    return (
+      err.name === "CastError" ||
+      err.constructor?.name === "CastError" ||
+      (err.name === "CastError" && err.kind === "ObjectId")
+    );
+  }
+
+  /**
+   * @name isJwtError
+   * @description Robust check for JWT-related errors
+   */
+  private static isJwtError(err: any): boolean {
+    const jwtErrorNames = [
+      "JsonWebTokenError",
+      "TokenExpiredError",
+      "jsonWebTokenError",
+      "NotBeforeError",
+    ];
+    return (
+      jwtErrorNames.includes(err.name) ||
+      jwtErrorNames.includes(err.constructor?.name) ||
+      (err.message && err.message.includes("jwt"))
+    );
+  }
+
+  /**
+   * @name isApiRoute
+   * @description Check if the request is for an API route
+   */
+  private static isApiRoute(req: IRequest): boolean {
+    const configService = ConfigService;
+    const apiPrefix = configService.getServerConfig().API_PREFIX;
+    const url = req.originalUrl;
+
+    // Check for API prefix with or without trailing slash
+    return url.includes(`/${apiPrefix}/`) ||
+      url === `/${apiPrefix}` ||
+      url.startsWith(`/${apiPrefix}/`) ||
+      url.startsWith(`/${apiPrefix}?`);
+  }
+
+  /**
    * @name errorHandler
    * @description Show undermaintenance page incase of errors
    * @param err any
@@ -83,58 +141,90 @@ class ExceptionHandler {
    * @returns any
    */
   public static errorHandler(
-    err: ApiError,
+    err: any,
     req: IRequest,
     res: IResponse,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _next: INext
   ) {
-    err.statusCode = err.statusCode || StatusCodes.INTERNAL_SERVER_ERROR;
-    err.message = err.message || StringValues.INTERNAL_SERVER_ERROR;
+    // Set default error values
+    let statusCode = err.statusCode || StatusCodes.INTERNAL_SERVER_ERROR;
+    let message = err.message || StringValues.INTERNAL_SERVER_ERROR;
 
     const configService = ConfigService;
     const apiPrefix = configService.getServerConfig().API_PREFIX;
-    console.log(req.originalUrl);
+
+    // Debug logging for CI environment
+    if (process.env.NODE_ENV === "test" || process.env.CI) {
+      Logger.getInstance().debug(`Error details:`, {
+        url: req.originalUrl,
+        apiPrefix,
+        isApiRoute: req.originalUrl.includes(`/${apiPrefix}/`),
+        errName: err.name,
+        errMessage: err.message,
+      });
+    }
 
     if (req.originalUrl.includes(`/${apiPrefix}/`)) {
       // Handle Unauthorized Error
       if (err.name && err.name === "UnauthorizedError") {
-        const message = StringValues.INVALID_TOKEN;
-        err = new ApiError(message, StatusCodes.UNAUTHORIZED);
+        message = StringValues.INVALID_TOKEN;
+        statusCode = StatusCodes.UNAUTHORIZED;
       }
-
       // Handle Wrong MongoDB Id error
-      if (err.name === "CastError") {
-        const message = StringValues.RESOURCE_NOT_FOUND;
-        err = new ApiError(message, StatusCodes.NOT_FOUND);
+      else if (err.name === "CastError") {
+        message = StringValues.RESOURCE_NOT_FOUND;
+        statusCode = StatusCodes.NOT_FOUND;
       }
-
       // Handle Wrong JWT error
-      if (err.name === "jsonWebTokenError") {
-        const message = StringValues.INVALID_TOKEN;
-        err = new ApiError(message, StatusCodes.UNAUTHORIZED);
+      else if (err.name === "jsonWebTokenError") {
+        message = StringValues.INVALID_TOKEN;
+        statusCode = StatusCodes.UNAUTHORIZED;
       }
-
       // Handle JWT Expire error
-      if (err.name === "TokenExpiredError") {
-        const message = StringValues.TOKEN_EXPIRED;
-        err = new ApiError(message, StatusCodes.UNAUTHORIZED);
+      else if (err.name === "TokenExpiredError") {
+        message = StringValues.TOKEN_EXPIRED;
+        statusCode = StatusCodes.UNAUTHORIZED;
+      }
+      // For any other error that reaches here, ensure we use the default message
+      // Don't leak internal error details to the client
+      else if (statusCode === StatusCodes.INTERNAL_SERVER_ERROR) {
+        message = StringValues.INTERNAL_SERVER_ERROR;
       }
 
-      Logger.getInstance().error(err.message);
+      Logger.getInstance().error(`${statusCode} - ${message} - ${req.originalUrl}`);
 
-      return res.status(err.statusCode).json({
+      const responseBody: any = {
         success: false,
-        error: err.message,
+        error: message,
+      };
+
+      // Include debug details in non-production environments
+      if (process.env.NODE_ENV !== "production") {
+        responseBody.statusCode = statusCode;
+        responseBody.errorType = err.name;
+      }
+
+      return res.status(statusCode).json(responseBody);
+    }
+
+    // Non-API route - render error page or return JSON if render is not available
+    // Check if res.render exists (for HTML responses)
+    if (typeof res.render === 'function') {
+      return res.render("pages/error", {
+        error: message,
+        title: "Under Maintenance",
       });
     }
 
-    return res.render("pages/error", {
-      error: err.message,
-      title: "Under Maintenance",
+    // Fallback for test environments or when view engine isn't configured
+    return res.status(statusCode).json({
+      success: false,
+      error: message,
+      statusCode,
+      errorType: err.name,
     });
   }
-
   /**
    * @name logErrors
    * @description Register your error/exception monitoring tools right here ie. before "next(err)"!

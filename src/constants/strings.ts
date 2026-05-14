@@ -1,5 +1,5 @@
 const StringValues = {
-  INTERNAL_SERVER_ERROR: "Internal server error",
+  INTERNAL_SERVER_ERROR: "Internal Server Error",
   NOT_FOUND: "Resource not found",
   RESOURCE_NOT_FOUND: "Resource not found",
   UNAUTHORIZED: "Unauthorized",
