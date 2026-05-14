@@ -68,10 +68,10 @@ RUN echo "=== Verifying build output ===" && \
 
 # Copy database assets to database/ (NOT inside dist/)
 # This keeps database/ and dist/ as siblings
-RUN echo "=== Copying database assets ===" && \
-    mkdir -p database/migrations && \
-    cp -r database/migrations database/ 2>/dev/null || true && \
-    cp -r database/seeds database/ 2>/dev/null || echo "No seeds directory"
+# RUN echo "=== Copying database assets ===" && \
+#     mkdir -p database/migrations && \
+#     cp -r database/migrations database/migrations  2>/dev/null || true && \
+#     cp -r database/seeds database/seeds 2>/dev/null || echo "No seeds directory"
 
 # Compile knexfile.ts to database/ (NOT inside dist/)
 RUN echo "=== Compiling knexfile ===" && \
@@ -79,7 +79,7 @@ RUN echo "=== Compiling knexfile ===" && \
     --outDir database \
     --target ES2022 \
     --module CommonJS \
-    --moduleResolution node16 \
+    --moduleResolution bundler \
     --esModuleInterop \
     --resolveJsonModule \
     --skipLibCheck \
@@ -92,7 +92,7 @@ RUN echo "=== Compiling database scripts ===" && \
     --outDir database/scripts \
     --target ES2022 \
     --module CommonJS \
-    --moduleResolution node16 \
+    --moduleResolution bundler \
     --esModuleInterop \
     --resolveJsonModule \
     --skipLibCheck \
