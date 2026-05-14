@@ -20,7 +20,7 @@ COPY . .
 # RUN ls -la && ls -la src/ || echo "src directory not found"
 
 # # Build the application (includes compiling TypeScript)
-# RUN pnpm build
+RUN pnpm build
 
 
 
@@ -52,72 +52,68 @@ COPY . .
 # --skipLibCheck \
 # --ignoreConfig
 
-# # Debug: List compiled files to verify
-# RUN ls -la dist/scripts/ && \
-#     ls -la dist/scripts/migrations/ || echo "No migrations folder" && \
-#     ls -la dist/scripts/db/ || echo "No db folder"
-# After building, verify the structure
-
-# Debug: Verify source files exist
-RUN echo "=== Verifying source files ===" && \
-    ls -la && \
-    echo "=== src directory contents ===" && \
-    ls -la src/ && \
-    echo "=== Looking for entry point ===" && \
-    find src -name "index.ts" -o -name "main.ts" -o -name "app.ts" | head -5
-
-# Build the application (compile src/ to dist/src/)
-RUN echo "=== Building main application ===" && \
-    npx tsc --project tsconfig.json --listEmittedFiles && \
-    echo "=== Build complete ==="
-
 # Verify build output
 RUN echo "=== Verifying build output ===" && \
-    if [ ! -d "dist/src" ]; then \
-    echo "ERROR: dist/src not found!" && \
+    if [ ! -f "dist/index.js" ]; then \
+    echo "ERROR: dist/index.js not found!" && \
     echo "dist contents:" && \
     ls -la dist/ && \
     exit 1; \
     fi && \
     echo "✅ Main app compiled successfully" && \
-    ls -la dist/src/
+    echo "Top level dist files:" && \
+    ls -la dist/*.js 2>/dev/null | head -5 && \
+    echo "Config directory:" && \
+    ls -la dist/config/
 
-# Copy database assets to dist
+# Copy database assets to database/ (NOT inside dist/)
+# This keeps database/ and dist/ as siblings
 RUN echo "=== Copying database assets ===" && \
-    mkdir -p dist/database && \
-    cp -r database/migrations dist/database/ && \
-    cp -r database/seeds dist/database/ 2>/dev/null || echo "No seeds directory"
+    mkdir -p database/migrations && \
+    cp -r database/migrations database/ 2>/dev/null || true && \
+    cp -r database/seeds database/ 2>/dev/null || echo "No seeds directory"
 
-# Compile knexfile.ts
+# Compile knexfile.ts to database/ (NOT inside dist/)
 RUN echo "=== Compiling knexfile ===" && \
     npx tsc knexfile.ts \
-    --outDir dist \
+    --outDir database \
     --target ES2022 \
     --module CommonJS \
-    --moduleResolution bundler \
-    --esModuleInterop \
-    --resolveJsonModule \
-    --skipLibCheck
-
-# Compile database scripts
-RUN echo "=== Compiling database scripts ===" && \
-    mkdir -p dist/database/scripts && \
-    npx tsc "database/scripts/**/*.ts" \
-    --outDir dist/database/scripts \
-    --target ES2022 \
-    --module CommonJS \
-    --moduleResolution bundler \
+    --moduleResolution node16 \
     --esModuleInterop \
     --resolveJsonModule \
     --skipLibCheck \
     --ignoreConfig
 
-# Final verification
+# Compile database scripts to database/scripts/ (NOT inside dist/)
+RUN echo "=== Compiling database scripts ===" && \
+    mkdir -p database/scripts && \
+    npx tsc "database/scripts/**/*.ts" \
+    --outDir database/scripts \
+    --target ES2022 \
+    --module CommonJS \
+    --moduleResolution node16 \
+    --esModuleInterop \
+    --resolveJsonModule \
+    --skipLibCheck \
+    --ignoreConfig
+
+# Final verification - shows both dist/ and database/ as siblings
 RUN echo "=== Final verification ===" && \
-    echo "Main app:" && ls -la dist/src/ | head -5 && \
-    echo "Config:" && ls -la dist/src/config/ 2>/dev/null || echo "No config dir" && \
-    echo "Migrations:" && ls -la dist/database/migrations/ | head -5 && \
-    echo "Migration scripts:" && ls -la dist/database/scripts/migrations/ | head -5
+    echo "📁 Project root contents:" && \
+    ls -la && \
+    echo "" && \
+    echo "📁 App code (dist/):" && \
+    ls -la dist/ | head -10 && \
+    echo "" && \
+    echo "📁 Database assets (database/):" && \
+    ls -la database/ && \
+    echo "" && \
+    echo "📁 Database migrations:" && \
+    ls -la database/migrations/ | head -5 && \
+    echo "" && \
+    echo "📁 Database scripts:" && \
+    ls -la database/scripts/migrations/ | head -5
 
 # Remove dev dependencies
 RUN pnpm prune --prod
@@ -137,6 +133,7 @@ WORKDIR /app
 
 # Copy built application from builder
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/database ./database
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package.json ./
 
