@@ -22,12 +22,28 @@ RUN ls -la && ls -la src/ || echo "src directory not found"
 # Build the application (includes compiling TypeScript)
 RUN pnpm build
 
-# # IMPORTANT: Also compile migration scripts (ignoring tsconfig.json)
-RUN mkdir -p dist/scripts && \
-    npx tsc scripts/migrations/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig && \
-    npx tsc scripts/db/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig
+# # # IMPORTANT: Also compile migration scripts (ignoring tsconfig.json)
+# RUN mkdir -p dist/scripts && \
+#     npx tsc scripts/migrations/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig && \
+#     npx tsc scripts/db/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig
 
-# RUN npx tsc -p tsconfig.scripts.json
+# # RUN npx tsc -p tsconfig.scripts.json
+# IMPORTANT: Also compile migration scripts
+RUN mkdir -p dist/scripts && \
+    npx tsc scripts/**/*.ts \
+    --outDir dist/scripts \
+    --target ES2022 \
+    --module ES2022 \
+    --moduleResolution bundler \
+    --esModuleInterop \
+    --resolveJsonModule \
+    --skipLibCheck \
+    --ignoreConfig
+
+# Debug: List compiled files to verify
+RUN ls -la dist/scripts/ && \
+    ls -la dist/scripts/migrations/ || echo "No migrations folder" && \
+    ls -la dist/scripts/db/ || echo "No db folder"
 
 # Remove dev dependencies
 RUN pnpm prune --prod
