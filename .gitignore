@@ -13,6 +13,7 @@ build
 .env.development
 .env.production
 .env.staging
+.env.test
 # TypeScript cache
 *.tsbuildinfo
 
@@ -36,3 +37,4 @@ pnpm-debug.log*
 coverage
 .nyc_output
 wg.cnf
+db.md

@@ -24,7 +24,7 @@ export class AdapterFactory {
       case "pg-native":
       case "mysql":
       case "mysql2":
-      case "sqlite3":
+      // case "sqlite3":
       case "better-sqlite3":
       case "knex":
         return new KnexAdapter(config);

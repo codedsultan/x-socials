@@ -4,17 +4,18 @@ import type { IDatabaseAdapter } from '../../../interfaces/db/IAdapter';
 
 function makeMockAdapter(): IDatabaseAdapter {
     return {
-        connect:         vi.fn().mockResolvedValue(undefined),
-        disconnect:      vi.fn().mockResolvedValue(undefined),
-        isConnected:     vi.fn().mockResolvedValue(true),
-        registerModel:   vi.fn(),
-        migrate:         vi.fn().mockResolvedValue(undefined),
-        findOne:         vi.fn().mockResolvedValue(null),
-        findMany:        vi.fn().mockResolvedValue([]),
-        create:          vi.fn().mockResolvedValue({ id: '1', email: 'a@b.com' }),
-        update:          vi.fn().mockResolvedValue({ id: '1', email: 'b@b.com' }),
-        delete:          vi.fn().mockResolvedValue(true),
+        connect: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        isConnected: vi.fn().mockResolvedValue(true),
+        registerModel: vi.fn(),
+        migrate: vi.fn().mockResolvedValue(undefined),
+        findOne: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue({ id: '1', email: 'a@b.com' }),
+        update: vi.fn().mockResolvedValue({ id: '1', email: 'b@b.com' }),
+        delete: vi.fn().mockResolvedValue(true),
         withTransaction: vi.fn(),
+        getClient: vi.fn()
     };
 }
 

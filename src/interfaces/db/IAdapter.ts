@@ -25,4 +25,7 @@ export interface IDatabaseAdapter {
 
     // Transactions — fn receives the adapter-native transaction handle
     withTransaction<T>(fn: (trx: unknown) => Promise<T>): Promise<T>;
+
+    getClient(): unknown;  // Returns the underlying database client (Knex, Mongoose connection, etc.)
+
 }

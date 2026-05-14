@@ -87,7 +87,7 @@ export class KnexAdapter implements IDbAdapter {
 
     try {
       const isSQLite =
-        this._config.driver === "sqlite3" ||
+        // this._config.driver === "sqlite3" ||
         this._config.driver === "better-sqlite3";
 
       // Build connection config with proper type narrowing
@@ -179,7 +179,7 @@ export class KnexAdapter implements IDbAdapter {
 
   public get isSQLite(): boolean {
     return (
-      this._config.driver === "sqlite3" ||
+      // this._config.driver === "sqlite3" ||
       this._config.driver === "better-sqlite3"
     );
   }

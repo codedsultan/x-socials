@@ -1,12 +1,12 @@
 # X-Socials API
 
 [![codecov](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)](https://codecov.io/gh/codedsultan/x-socials/branch/main/graph/badge.svg)
-[![Node.js Version](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-20%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
-[![pnpm](https://img.shields.io/badge/pnpm-8.0-orange)](https://pnpm.io)
+[![pnpm](https://img.shields.io/badge/pnpm-10.0-orange)](https://pnpm.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A robust Node.js TypeScript application with Express, featuring environment-based configuration, comprehensive logging, Swagger documentation, and CI/CD pipelines.
+A robust Node.js TypeScript application with Express, featuring multi-database support (MongoDB + SQL), environment-based configuration, comprehensive logging, Swagger documentation, and CI/CD pipelines.
 
 ---
 
@@ -14,11 +14,13 @@ A robust Node.js TypeScript application with Express, featuring environment-base
 
 - **TypeScript** — Type-safe code with full TypeScript support
 - **Express.js** — Fast, unopinionated web framework
+- **Multi-Database Architecture** — MongoDB for document storage + configurable SQL database (MySQL/PostgreSQL/SQLite)
 - **Environment Configuration** — Development, Staging, and Production environments
 - **Swagger/OpenAPI** — Automatic API documentation
 - **Winston Logger** — Structured logging with environment-based formatting
-- **Multi-Database** — Simultaneous MongoDB, PostgreSQL, MySQL, and SQLite connections with per-model routing
-- **Vitest** — Fast unit and integration testing
+- **Database Migrations** — CLI-based migrations with rollback support
+- **Repository Pattern** — Clean separation of data access logic
+- **Testing** — Vitest for unit and integration tests
 - **pnpm** — Fast, disk-efficient package manager
 - **CI/CD Ready** — GitHub Actions workflows for automated testing and deployment
 
@@ -26,17 +28,19 @@ A robust Node.js TypeScript application with Express, featuring environment-base
 
 ## Prerequisites
 
-- Node.js v22 or higher
-- pnpm v8 or higher (`npm install -g pnpm`)
+- Node.js v20 or higher
+- pnpm v10 or higher (`npm install -g pnpm`)
+- MongoDB (required)
+- One SQL database: MySQL, PostgreSQL, or SQLite (SQLite works out of the box)
 
 ---
 
-## Getting Started
+## Quick Start
 
 ```bash
 # Clone the repository
-git clone https://github.com/codedsultan/x-social
-cd x-social-api
+git clone https://github.com/codedsultan/x-socials
+cd x-socials
 
 # Install dependencies
 pnpm install
@@ -50,119 +54,220 @@ pnpm dev
 
 ---
 
+## Database Configuration
+
+The application supports MongoDB + one SQL database of your choice. SQL database is configured via the `SQL_DB` environment variable.
+
+### Supported SQL Databases
+
+| Database | `SQL_DB` value | Development | Production |
+|----------|---------------|-------------|------------|
+| MySQL | `mysql` | ✅ Default | ✅ |
+| PostgreSQL | `postgres` | ✅ (via `SQL_DB=postgres`) | ✅ Recommended |
+| SQLite | `sqlite` | ✅ (testing/lightweight) | ❌ Not recommended |
+
+### Example Configurations
+
+**Development with MySQL (default)**
+```env
+SQL_DB=mysql
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=x_socials_dev
+MYSQL_USER=root
+MYSQL_PASSWORD=yourpassword
+```
+
+**Development with PostgreSQL**
+```env
+SQL_DB=postgres
+PG_HOST=localhost
+PG_PORT=5432
+PG_DATABASE=x_socials_dev
+PG_USER=postgres
+PG_PASSWORD=yourpassword
+PG_SSL=false
+```
+
+**Production with PostgreSQL**
+```env
+SQL_DB=postgres
+PG_HOST=cluster-production-shared-postgres
+PG_PORT=5432
+PG_DATABASE=x_socials_production
+PG_USER=x_socials
+PG_PASSWORD=${PG_PASSWORD}
+PG_SSL=true
+```
+
+**Testing with SQLite (fast, no setup)**
+```env
+SQL_DB=sqlite
+SQLITE_FILENAME=./data/test.sqlite
+```
+
+### Model Routing
+
+All SQL models (User, Otp, Token) use the same configured SQL database. MongoDB is used for document-based models (Post, Comment, Like).
+
+---
+
 ## Available Scripts
 
+### Development
 | Script | Description |
 |--------|-------------|
 | `pnpm dev` | Start development server with hot reload |
 | `pnpm build` | Compile TypeScript to JavaScript |
 | `pnpm start` | Start production server |
+
+### Database Migrations
+| Script | Description |
+|--------|-------------|
+| `pnpm migrate:create` | Create a new migration file |
+| `pnpm migrate:up` | Run pending migrations |
+| `pnpm migrate:down` | Rollback last migration batch |
+| `pnpm migrate:status` | Show migration status |
+| `pnpm db:reset` | Drop all tables, run migrations, seed data |
+| `pnpm db:drop` | Drop all tables |
+| `pnpm db:seed` | Seed database with test data |
+
+### Testing
+| Script | Description |
+|--------|-------------|
 | `pnpm test` | Run tests in watch mode |
 | `pnpm test:run` | Run tests once |
 | `pnpm test:coverage` | Run tests with coverage report |
-| `npx tsc --noEmit` | Check TypeScript types without compiling |
+| `pnpm test:mysql` | Run tests against MySQL |
+| `pnpm test:postgres` | Run tests against PostgreSQL |
+| `pnpm test:sqlite` | Run tests against SQLite |
+| `pnpm test:mongodb` | Test MongoDB connection and data |
 
 ---
 
-## Environment Configuration
+## Environment Variables
 
-The application supports multiple environments:
-
-| Environment | Features | Use Case |
-|-------------|----------|----------|
-| **Development** | Full logging, Swagger enabled, detailed errors | Local development |
-| **Staging** | Moderate logging, Swagger enabled, limited error details | Pre-production testing |
-| **Production** | Minimal logging, Swagger disabled, safe error messages | Live production |
-
-### Environment Variables
-
+### Required
 ```env
-# Required
-PORT=5000                    # Server port
-NODE_ENV=development         # Environment: development | staging | production | test
-
-# Optional
-SERVER_MAINTENANCE=false     # Enable maintenance mode
-ENABLE_SWAGGER=true          # Force-enable Swagger (useful in staging)
-API_BASE_URL=                # Base URL for the API
-
-# ── Database (at least one required) ──────────────────────────────────────────
-DEFAULT_DB=mongodb           # Which named connection is the default
-
-# MongoDB
+PORT=4000                    # Server port
+NODE_ENV=development         # development | staging | production | test
+SQL_DB=mysql                 # mysql | postgres | sqlite
 MONGO_URI=mongodb://localhost:27017
-MONGO_DB_NAME=x_socials
-# MONGO_CONNECTION_NAME=mongodb        # logical name (default: "mongodb")
-# MONGO_SOCKET_TIMEOUT_MS=30000
-# MONGO_SERVER_SELECTION_TIMEOUT_MS=5000
-
-# PostgreSQL
-# PG_HOST=localhost
-# PG_PORT=5432
-# PG_DATABASE=x_socials
-# PG_USER=postgres
-# PG_PASSWORD=secret
-# PG_SSL=false
-# PG_CLIENT=pg                         # pg | pg-native
-# PG_CONNECTION_NAME=postgres
-# PG_POOL_MIN=2
-# PG_POOL_MAX=10
-
-# MySQL
-# MYSQL_HOST=localhost
-# MYSQL_PORT=3306
-# MYSQL_DATABASE=x_socials
-# MYSQL_USER=root
-# MYSQL_PASSWORD=secret
-# MYSQL_CLIENT=mysql2                  # mysql | mysql2
-# MYSQL_CONNECTION_NAME=mysql
-
-# SQLite
-# SQLITE_FILENAME=./data/x_socials.sqlite
-# SQLITE_CLIENT=better-sqlite3         # sqlite3 | better-sqlite3
-# SQLITE_CONNECTION_NAME=sqlite
+JWT_SECRET=your-secret-key
 ```
 
-See `.env.example` for a full reference.
+### SQL Database (choose one based on SQL_DB)
+
+**MySQL**
+```env
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=x_socials
+MYSQL_USER=root
+MYSQL_PASSWORD=secret
+MYSQL_CLIENT=mysql2
+```
+
+**PostgreSQL**
+```env
+PG_HOST=localhost
+PG_PORT=5432
+PG_DATABASE=x_socials
+PG_USER=postgres
+PG_PASSWORD=secret
+PG_SSL=false
+PG_CLIENT=pg
+```
+
+**SQLite**
+```env
+SQLITE_FILENAME=./data/x_socials.sqlite
+SQLITE_CLIENT=better-sqlite3
+```
+
+### Optional
+```env
+# Database Mode
+DB_MODE=split                # split | single
+DEFAULT_DB=mongodb           # Default database for unbound models
+
+# Auto-migrations (default: true in dev, false in prod)
+AUTO_MIGRATE=false
+
+# Application
+API_BASE_URL=http://localhost:4000
+API_PREFIX=/api
+CORS_ENABLED=true
+ENABLE_SWAGGER=true
+SERVER_MAINTENANCE=false
+
+# JWT
+JWT_EXPIRES_IN=7d
+
+# Logging
+LOG_DAYS=14
+
+# External Services
+SENDGRID_API_KEY=your-key
+SMTP_FROM=noreply@example.com
+CLOUDINARY_CLOUD_NAME=your-cloud
+CLOUDINARY_API_KEY=your-key
+CLOUDINARY_API_SECRET=your-secret
+```
 
 ---
 
 ## Project Structure
 
 ```
-social-media-api/
+x-socials/
 ├── src/
 │   ├── app/
-│   │   └── index.ts            # Express app configuration
+│   │   └── index.ts              # Express app configuration
 │   ├── config/
-│   │   ├── db/
-│   │   │   ├── adapters/
-│   │   │   │   ├── MongooseAdapter.ts  # MongoDB/Mongoose adapter
-│   │   │   │   └── KnexAdapter.ts      # PostgreSQL / MySQL / SQLite adapter
-│   │   │   ├── AdapterFactory.ts       # Maps DbDriver → adapter class
-│   │   │   ├── DbRegistry.ts           # Named adapter map + lifecycle
-│   │   │   ├── DbResolver.ts           # Per-model connection routing
-│   │   │   ├── DbManager.ts            # Singleton façade (main entry point)
-│   │   │   ├── DbConfig.ts             # Reads DB env vars
-│   │   │   └── index.ts                # Barrel export
-│   │   ├── env.ts              # Environment configuration
-│   │   └── swagger.ts          # Swagger/OpenAPI setup
+│   │   ├── config.service.ts     # Unified configuration (singleton)
+│   │   ├── database.config.ts    # Database container builder
+│   │   └── swagger.ts            # Swagger/OpenAPI setup
+│   ├── database/
+│   │   ├── adapters/
+│   │   │   ├── MongooseAdapter.ts   # MongoDB adapter
+│   │   │   └── KnexAdapter.ts       # SQL adapter (MySQL/PostgreSQL/SQLite)
+│   │   ├── core/
+│   │   │   ├── DbRegistry.ts     # Named adapter registry
+│   │   │   └── DbResolver.ts     # Model → adapter router
+│   │   ├── migrations/           # Migration files
+│   │   └── initializer.ts        # Database lifecycle manager
+│   ├── repositories/
+│   │   ├── BaseRepository.ts     # Base CRUD operations
+│   │   ├── UserRepository.ts     # User-specific queries
+│   │   ├── PostRepository.ts     # Post-specific queries
+│   │   └── ...
+│   ├── factories/
+│   │   └── RepositoryFactory.ts  # Repository instance factory
 │   ├── interfaces/
 │   │   └── core/
-│   │       ├── config.ts       # App-level TypeScript interfaces
-│   │       └── database.ts     # Database contracts (IDbAdapter, IDbRegistry, …)
-│   ├── logger/
-│   │   └── index.ts            # Winston logger setup
-│   └── index.ts                # Application entry point
-├── src/__tests__/
-│   ├── unit/                   # Unit tests
-│   └── integration/            # Integration tests
-├── .github/
-│   └── workflows/
-│       ├── ci.yml              # Continuous Integration
-│       └── cd.yml              # Continuous Deployment
-├── .env.example                # Example environment variables
-├── .gitignore
+│   │       ├── config.ts         # TypeScript interfaces
+│   │       ├── db-types.ts       # Database type definitions
+│   │       └── IAdapter.ts       # Adapter interface
+│   ├── middlewares/              # Express middleware
+│   ├── exceptions/               # Error handling
+│   ├── logger/                   # Winston logger
+│   ├── models/                   # Schema definitions
+│   └── index.ts                  # Application entry point
+├── scripts/
+│   ├── db/                       # Database management scripts
+│   │   ├── drop.ts
+│   │   ├── reset.ts
+│   │   ├── seed.ts
+│   │   └── update-likes.ts
+│   └── migrations/               # Migration CLI scripts
+│       ├── create.ts
+│       ├── up.ts
+│       ├── down.ts
+│       └── status.ts
+├── src/__tests__/                # Test files
+├── .github/workflows/            # CI/CD pipelines
+├── .env.example
 ├── package.json
 ├── tsconfig.json
 ├── vitest.config.ts
@@ -170,257 +275,181 @@ social-media-api/
 ```
 
 ---
-## Architecture
-
-### Application bootstrap — `src/app/index.ts`
-
-`ExpressApp` is an instance-based class exported as a singleton (`export default new ExpressApp()`). Construction wires all middleware, routes, and handlers in order. Listening is deferred to `_init()` so the app can be imported and tested without binding a port.
-
-```
-constructor()
-  ├── _mountLogger()         Logger._init(), confirms Winston is ready
-  ├── _mountMiddlewares()    Http → Morgan → CORS (if enabled) → headers → maintenance gate
-  ├── _mountMonitoring()     Prometheus metrics middleware
-  ├── _mountConfigs()        EnvConfig.init, SwaggerDocs.init
-  ├── _mountRoutes()         Health probes, root, API routes
-  └── _registerHandlers()    logErrors → clientErrorHandler → errorHandler → notFoundHandler
-```
-
-**Handler order is load-bearing.** `notFoundHandler` registers a wildcard catch-all and must be last. Placing it before the error middleware causes thrown errors to resolve as 404s.
-
-### Middleware — `src/middlewares/`
-
-| File | Responsibility |
-|---|---|
-| `Http.ts` | helmet (security headers), compression, express json/urlencoded |
-| `Morgan.ts` | HTTP access logging routed through Winston at the `http` level |
-| `CORS.ts` | Cross-origin policy — singleton instance, credentials enabled, `x-auth-token` exposed |
-
-CORS is gated: set `CORS_ENABLED=false` to disable. It defaults to enabled.
-
-### Exception handling — `src/exceptions/`
-
-| File | Responsibility |
-|---|---|
-| `ApiError.ts` | Extends `Error` with a `statusCode` field |
-| `Handler.ts` | Four static Express error handlers covering logging, XHR clients, named JWT/Mongoose errors, and 404 catch-all |
-
-### Environment config — `src/config/env.ts`
-
-All config is loaded once and cached. Required fields are validated at startup — the process refuses to start with a missing or malformed `PORT` or `NODE_ENV`.
-
-Key env vars:
-
-| Var | Default | Notes |
-|---|---|---|
-| `PORT` | `4000` | 0 = OS-assigned |
-| `NODE_ENV` | `development` | `development` / `staging` / `production` / `test` |
-| `CORS_ENABLED` | `true` | Set to `false` to opt out |
-| `SERVER_MAINTENANCE` | `false` | Non-health routes return 503 when true |
-| `ENABLE_SWAGGER` | `false` in prod | Auto-enabled in dev/staging |
-
-### Interfaces — `src/interfaces/core/`
-
-- `config.ts` — `IEnvConfig` (required fields) + `DEFAULT_DB` + optional fields (JWT, email, Cloudinary) + `IFirebaseConfig`
-- `express.ts` — `IRequest` / `IResponse` / `INext` with typed `currentUser?: IUserModel`
-- `database.ts` — All database contracts. Key interfaces:
-
-| Interface | Responsibility |
-|---|---|
-| `IDbAdapter` | Single connection — connect, disconnect, ping, getClient |
-| `IDbRegistry` | Named adapter map — register, get, getDefault, connectAll, healthCheck |
-| `IDbResolver` | Model → connection routing with default fallback |
-| `IDbManager` | Façade — initialize, shutdown, bindModel, resolveForModel |
-| `IDbConnectionConfig` | Per-connection config shape (driver, host, pool, ssl, …) |
-| `IModelDbBinding` | Associates a model class name with a connection name |
-
-### Database — `src/config/db/`
-
-The multi-DB system is built around four SOLID-aligned layers:
-
-```
-DbConfig.buildAll()          reads env vars → IDbConnectionConfig[]
-       ↓
-AdapterFactory.create()      IDbConnectionConfig → IDbAdapter
-       ↓
-DbRegistry                   holds named adapters, drives connectAll / healthCheck
-       ↓
-DbResolver                   routes model names → adapters (falls back to default)
-       ↓
-DbManager (singleton)        façade owned by app/index.ts
-```
-
-**Registering connections** happens automatically in `app/_init()` via `DbConfig.buildAll()`. Every `DB_*` / `MONGO_URI` / `PG_*` / `MYSQL_*` / `SQLITE_*` env var that is present produces a named connection.
-
-**Binding a model to a specific connection** (optional — unbound models use the default):
-
-```ts
-import DbManager from "./config/db/DbManager";
-
-DbManager.getInstance().bindModel({
-  modelName: "AnalyticsModel",
-  connectionName: "postgres",      // must match PG_CONNECTION_NAME or "postgres"
-});
-```
-
-**Accessing the raw client in a repository:**
-
-```ts
-import DbManager from "./config/db/DbManager";
-import type { KnexAdapter } from "./config/db/adapters/KnexAdapter";
-import type { MongooseAdapter } from "./config/db/adapters/MongooseAdapter";
-
-// By model name (uses binding or default)
-const adapter = DbManager.getInstance().resolveForModel("UserModel");
-const mongoose = (adapter as MongooseAdapter).getClient(); // mongoose.Connection
-
-// By connection name directly
-const pg = DbManager.getInstance().registry.get("postgres") as KnexAdapter;
-const knex = pg.getClient(); // Knex instance
-```
-
-**Adding a new driver** requires only one new `case` in `AdapterFactory.ts` and a new adapter class — no other files change.
 
 ## API Endpoints
 
-**Base URL:** `http://localhost:5000`
+**Base URL:** `http://localhost:4000`
 
+### Health & Status
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | Welcome message with environment info |
-| GET | `/health` | Server health + per-connection DB ping |
+| GET | `/health` | Server health + database status |
 | GET | `/ready` | Kubernetes readiness probe |
 | GET | `/live` | Kubernetes liveness probe |
+
+### API Routes
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/environment` | Current environment configuration |
-| GET | `/api/users` | List of users (TODO) |
-| GET | `/api/db/status` | Connection names, health map, model bindings *(non-production only)* |
+| GET | `/api/users` | Get all users |
+| GET | `/api/posts` | Get all posts |
+| GET | `/api/posts/:id` | Get single post |
+| POST | `/api/posts` | Create a new post |
+| PUT | `/api/posts/:id` | Update a post |
+| DELETE | `/api/posts/:id` | Delete a post |
+| POST | `/api/posts/:id/like` | Like a post |
+| GET | `/api/posts/author/:authorId` | Get posts by author |
+| GET | `/api/posts/tag/:tag` | Get posts by tag |
+
+### Documentation
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api-docs` | Swagger UI (dev/staging only) |
 | GET | `/api-docs.json` | Swagger JSON specification |
 
-### Example responses
+### Example Responses
 
-**`GET /`**
-```json
-{
-  "message": "🚀 Development Server - Social Media API",
-  "environment": "development",
-  "version": "1.0.0",
-  "documentation": "/api-docs",
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
-**`GET /health`**
+**GET `/health`**
 ```json
 {
   "status": "OK",
   "environment": "development",
   "maintenance": false,
-  "version": "1.0.0",
-  "timestamp": "2024-01-15T10:30:00.000Z",
-  "databases": {
+  "database": {
     "mongodb": true,
-    "postgres": true
-  }
+    "mysql": true
+  },
+  "timestamp": "2026-05-13T17:30:00.000Z",
+  "version": "1.0.0"
 }
 ```
 
-**`GET /api/db/status`** *(non-production only)*
+**GET `/api/posts`**
 ```json
 {
-  "connections": ["mongodb", "postgres"],
-  "health": { "mongodb": true, "postgres": true },
-  "modelBindings": [
-    { "modelName": "UserModel", "connectionName": "mongodb" },
-    { "modelName": "AnalyticsModel", "connectionName": "postgres" }
+  "posts": [
+    {
+      "id": "019e23ab-ae34-759f-a6be-04a6f554b409",
+      "title": "Welcome to the Platform!",
+      "content": "This is your first post...",
+      "authorId": "user1-id",
+      "tags": ["welcome", "introduction"],
+      "likesCount": 5,
+      "createdAt": "2026-05-13T17:28:34.000Z",
+      "updatedAt": "2026-05-13T17:28:34.000Z"
+    }
   ],
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "count": 3
 }
+```
+
+---
+
+## Database Migrations
+
+### Creating Migrations
+```bash
+# Create a new migration
+pnpm migrate:create create_users_table
+```
+
+### Running Migrations
+```bash
+# Run all pending migrations
+pnpm migrate:up
+
+# Check migration status
+pnpm migrate:status
+
+# Rollback last batch
+pnpm migrate:down
+
+# Rollback 3 batches
+pnpm migrate:down 3
+
+# Rollback all migrations
+pnpm migrate:down --all
+```
+
+### Complete Reset
+```bash
+# Drop all tables, run migrations, seed data
+pnpm db:reset
+
+# Reset without seeding
+pnpm db:reset --no-seed
+
+# Drop tables only
+pnpm db:reset --drop-only
 ```
 
 ---
 
 ## Testing
 
+### Run tests with different databases
 ```bash
-# Run all tests (watch mode)
+# Default (SQLite - fast, no setup)
 pnpm test
 
-# Run once (for CI)
-pnpm test:run
+# Run against MySQL (requires MySQL running)
+pnpm test:mysql
 
-# With coverage report
+# Run against PostgreSQL (requires PostgreSQL running)
+pnpm test:postgres
+
+# Run against SQLite
+pnpm test:sqlite
+
+# Test MongoDB connection and data
+pnpm test:mongodb
+```
+
+### Coverage Report
+```bash
 pnpm test:coverage
 ```
 
-Tests are organised into unit tests (isolated components) and integration tests (API endpoints and module interactions).
-
 ---
 
-## Deployment
+## Migration from PostgreSQL to MySQL
 
-### Development
-```bash
-pnpm dev
-```
+The application supports seamless switching between SQL databases via the `SQL_DB` environment variable:
 
-### Staging
-```bash
-pnpm build
-pnpm start:staging
-```
+1. **Update `.env`**:
+   ```env
+   SQL_DB=mysql  # Change from postgres to mysql
+   ```
 
-### Production
-```bash
-pnpm build
-NODE_ENV=production pnpm start
-```
+2. **Update connection details**:
+   ```env
+   MYSQL_HOST=localhost
+   MYSQL_DATABASE=x_socials
+   # ... MySQL config
+   ```
+
+3. **Reset and migrate**:
+   ```bash
+   pnpm db:reset
+   ```
+
+All SQL models automatically use the configured database - no code changes required!
 
 ---
 
 ## CI/CD Pipeline
 
 ### Continuous Integration
-Runs on every push and pull request to `main` and `develop`:
 - Installs dependencies via pnpm with cache
 - Runs TypeScript type checking
-- Executes test suite with coverage upload to Codecov
-- Builds the application and uploads artifacts
-- Runs a security audit and optional Snyk scan
+- Executes test suite with coverage upload
+- Runs security audit
+- Builds the application
 
-### Continuous Deployment
-Triggers on push to `main`:
+### Continuous Deployment (GitHub Actions)
 1. **Staging** — Deploys automatically after CI passes
-2. **Production** — Deploys after staging succeeds (requires `production` environment approval in GitHub)
-
----
-
-## Logging
-
-Winston provides structured logging:
-
-| Level | Value | Used for |
-|-------|-------|----------|
-| `error` | 0 | Critical failures |
-| `warn` | 1 | Warning messages |
-| `info` | 2 | General information |
-| `http` | 3 | HTTP request logs |
-| `debug` | 4 | Debug info (dev only) |
-
-Development logs are colorised with timestamps. Production logs output plain JSON.
-
----
-
-## Error Handling
-
-- **404 handler** — Returns JSON for unmatched routes
-- **Global error handler** — Catches and formats all errors
-- **Environment-aware** — Stack traces only exposed in non-production environments
-
----
-
-## Docker Support 
-
+2. **Production** — Deploys after staging approval
 
 ---
 

@@ -1,61 +1,65 @@
 /**
  * src/instrumentation.ts
- *
- * OpenTelemetry SDK setup. Imported at the very top of src/index.ts
- * BEFORE any other imports so instrumentation patches load first.
- *
- * Signal handlers (SIGTERM/SIGINT) are owned by ExpressApp._setupGracefulShutdown().
- * Do NOT register them here — duplicate handlers cause a shutdown race condition.
+ * 
+ * OpenTelemetry SDK setup with configurable Prometheus port
  */
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
-import { ConsoleSpanExporter, BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
 
-const IGNORE_PATHS = ['/health', '/metrics', '/ready', '/live'];
+const isProduction = process.env.NODE_ENV === 'production';
+const enableTraces = process.env.OTEL_ENABLE_TRACES === 'true';
 
-// Prometheus scrape endpoint on a dedicated port — never mixed with app traffic.
+// Get Prometheus port from environment (default: 9464)
+const prometheusPort = parseInt(process.env.PROMETHEUS_METRICS_PORT || '9464', 10);
+const prometheusEndpoint = process.env.PROMETHEUS_METRICS_ENDPOINT || '/metrics';
+
+// Always enable metrics via Prometheus
 const prometheusExporter = new PrometheusExporter(
-    { port: 9464, endpoint: '/metrics' },
-    () => console.log('📊 Prometheus scrape endpoint: http://localhost:9464/metrics'),
+    {
+        port: prometheusPort,
+        endpoint: prometheusEndpoint
+    },
+    () => console.log(`📊 Prometheus metrics: http://localhost:${prometheusPort}${prometheusEndpoint}`),
 );
-
-const isProduction = !['development', 'test'].includes(process.env['NODE_ENV'] ?? '');
 
 let sdk: NodeSDK | null = null;
 
-if (isProduction) {
+// Only start traces if needed
+if (isProduction || enableTraces) {
     sdk = new NodeSDK({
-        spanProcessors: [new BatchSpanProcessor(new ConsoleSpanExporter())],
+        // No trace exporter = no traces logged
         metricReader: prometheusExporter,
         instrumentations: [
             getNodeAutoInstrumentations({
                 '@opentelemetry/instrumentation-http': {
                     enabled: true,
                     ignoreIncomingRequestHook: (req) =>
-                        IGNORE_PATHS.includes(req.url ?? ''),
+                        ['/health', '/metrics', '/ready', '/live'].includes(req.url ?? ''),
                 },
-                '@opentelemetry/instrumentation-express': { enabled: true },
-                // fs instrumentation is very noisy — disable unless needed
+                '@opentelemetry/instrumentation-express': {
+                    enabled: isProduction || enableTraces
+                },
                 '@opentelemetry/instrumentation-fs': { enabled: false },
             }),
         ],
     });
 
     sdk.start();
-    console.log('🔍 OpenTelemetry SDK started');
+    console.log('🔍 OpenTelemetry metrics enabled');
 } else {
-    console.log(`⚙️  OpenTelemetry SDK skipped (${process.env['NODE_ENV'] ?? 'development'} mode)`);
+    // Still start for metrics only
+    sdk = new NodeSDK({
+        metricReader: prometheusExporter,
+        instrumentations: [],
+    });
+    sdk.start();
+    console.log('📊 Prometheus metrics enabled (no traces)');
 }
 
-/**
- * Exported so ExpressApp._close() can await a clean OTel shutdown before
- * closing the HTTP server and disconnecting adapters.
- */
 export async function shutdownTelemetry(): Promise<void> {
     if (sdk) {
         await sdk.shutdown();
-        console.log('OTel SDK shut down cleanly');
     }
 }

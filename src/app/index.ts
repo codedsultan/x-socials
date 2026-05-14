@@ -1,30 +1,20 @@
+// src/app.ts
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
-import EnvConfig    from '../config/env';
-import SwaggerDocs  from '../config/swagger';
-import Logger       from '../logger';
-import Monitoring   from '../monitoring';
-import Http         from '../middlewares/Http';
-import Morgan       from '../middlewares/Morgan';
-import CORS         from '../middlewares/CORS';
+import ConfigService from '../config/config.service';
+import SwaggerDocs from '../config/swagger';
+import Logger from '../logger';
+import Monitoring from '../monitoring';
+import Http from '../middlewares/Http';
+import Morgan from '../middlewares/Morgan';
+import CORS from '../middlewares/CORS';
 import ExceptionHandler from '../exceptions/Handler';
 import { DatabaseInitializer } from '../database/initializer';
-import { shutdownTelemetry }  from '../instrumentation';
+import { shutdownTelemetry } from '../instrumentation';
 
-/**
- * ExpressApp wraps the Express application.
- *
- * Key changes from original:
- *  - Exported as a CLASS, not `new ExpressApp()` — tests instantiate their own.
- *  - Receives a DatabaseInitializer via constructor (dependency injection).
- *  - req.repoFactory is the injection point — no flat `req.repositories`.
- *  - _init() starts the server; constructor only configures middleware/routes.
- */
 export class ExpressApp {
-    /** Mutable internally (middleware mounts reassign it); read-only to consumers via getter. */
     private _app: Application;
     private server: ReturnType<Application['listen']> | null = null;
 
-    /** Public read-only surface for tests and supertest. */
     get express(): Application { return this._app; }
 
     constructor(private readonly db: DatabaseInitializer) {
@@ -43,29 +33,29 @@ export class ExpressApp {
         Logger.getInstance().info('App :: Initialized');
     }
 
-    // ── private setup ──────────────────────────────────────────────────────
-
     private _mountLogger(): void {
         Logger._init();
         Logger.getInstance().info('Logger :: Mounted');
     }
 
     private _mountMiddlewares(): void {
+        const config = ConfigService.getServerConfig();
+
         this._app = Http.mount(this._app);
         this._app = Morgan.mount(this._app);
 
-        if (EnvConfig.getConfig().CORS_ENABLED) {
+        if (config.CORS_ENABLED) {
             this._app = CORS.mount(this._app);
         }
 
         this._app.use((_req: Request, res: Response, next: NextFunction) => {
-            res.setHeader('X-Environment', EnvConfig.getConfig().NODE_ENV);
+            res.setHeader('X-Environment', config.NODE_ENV);
             res.setHeader('X-API-Version', '1.0.0');
             next();
         });
 
         this._app.use((req: Request, res: Response, next: NextFunction) => {
-            if (EnvConfig.isServerMaintenance() && req.path !== '/health') {
+            if (ConfigService.isMaintenance() && req.path !== '/health') {
                 res.status(503).json({ error: 'Server is under maintenance. Please try again later.' });
             } else {
                 next();
@@ -81,14 +71,10 @@ export class ExpressApp {
     }
 
     private _mountConfigs(): void {
-        this._app = EnvConfig.init(this._app);
+        this._app = ConfigService.initExpress(this._app);
         this._app = SwaggerDocs.init(this._app);
     }
 
-    /**
-     * Inject the RepositoryFactory onto req.repoFactory.
-     * Routes call req.repoFactory.getRepository('User') etc.
-     */
     private _mountDatabaseMiddleware(): void {
         this._app.use((req: Request, _res: Response, next: NextFunction) => {
             if (this.db.isInitialized()) {
@@ -100,10 +86,9 @@ export class ExpressApp {
     }
 
     private _mountRoutes(): void {
-        const cfg = EnvConfig.getConfig();
-        const prefix = cfg.API_PREFIX ?? 'api';
+        const config = ConfigService.getServerConfig();
+        const prefix = config.API_PREFIX || 'api';
 
-        // ── probes ────────────────────────────────────────────────────────
         this._app.get('/health', async (_req: Request, res: Response) => {
             const dbHealth = this.db.isInitialized()
                 ? await this.db.healthCheck()
@@ -111,8 +96,8 @@ export class ExpressApp {
 
             res.status(200).json({
                 status: 'OK',
-                environment: cfg.NODE_ENV,
-                maintenance: cfg.SERVER_MAINTENANCE,
+                environment: config.NODE_ENV,
+                maintenance: config.SERVER_MAINTENANCE,
                 database: dbHealth,
                 timestamp: new Date().toISOString(),
                 version: '1.0.0',
@@ -131,33 +116,31 @@ export class ExpressApp {
             res.status(200).json({ status: 'alive' });
         });
 
-        // ── root ──────────────────────────────────────────────────────────
         this._app.get('/', (_req: Request, res: Response) => {
             const messages: Record<string, string> = {
                 development: '🚀 Development Server - Social Media API',
-                staging:     '🧪 Staging Server - Social Media API',
-                production:  '🌍 Production Server - Social Media API',
-                test:        '🧪 Test Server - Social Media API',
+                staging: '🧪 Staging Server - Social Media API',
+                production: '🌍 Production Server - Social Media API',
+                test: '🧪 Test Server - Social Media API',
             };
             res.json({
-                message: messages[cfg.NODE_ENV] ?? messages['development'],
-                environment: cfg.NODE_ENV,
+                message: messages[config.NODE_ENV] || messages.development,
+                environment: config.NODE_ENV,
                 version: '1.0.0',
-                documentation: cfg.NODE_ENV !== 'production' ? '/api-docs' : 'https://docs.yourdomain.com',
+                documentation: config.NODE_ENV !== 'production' ? '/api-docs' : 'https://docs.yourdomain.com',
                 timestamp: new Date().toISOString(),
             });
         });
 
         this._app.get(`/${prefix}/environment`, (_req: Request, res: Response) => {
             res.json({
-                environment: cfg.NODE_ENV,
-                maintenance: cfg.SERVER_MAINTENANCE,
-                apiUrl: EnvConfig.getApiUrl(),
+                environment: config.NODE_ENV,
+                maintenance: config.SERVER_MAINTENANCE,
+                apiUrl: ConfigService.getApiUrl(),
                 timestamp: new Date().toISOString(),
             });
         });
 
-        // ── example resource route ────────────────────────────────────────
         this._app.get(`/${prefix}/users`, async (req: Request, res: Response): Promise<void> => {
             try {
                 Monitoring.getInstance().incrementExternalApiCall('user_list');
@@ -171,6 +154,25 @@ export class ExpressApp {
                 res.json({ users });
             } catch (error) {
                 Logger.getInstance().error(`Error fetching users: ${error}`);
+                res.status(500).json({ error: 'Internal server error' });
+            }
+        });
+
+        this._app.get(`/${prefix}/posts`, async (req: Request, res: Response): Promise<void> => {
+            try {
+                Monitoring.getInstance().incrementExternalApiCall('post_list');
+
+                if (!req.repoFactory) {
+                    res.status(503).json({ error: 'Database not ready' });
+                    return;
+                }
+
+                // Exactly the same pattern as users!
+                const posts = await req.repoFactory.getRepository('Post').findMany({});
+                res.json({ posts });
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                Logger.getInstance().error(`Error fetching posts: ${errorMessage}`);
                 res.status(500).json({ error: 'Internal server error' });
             }
         });
@@ -190,19 +192,22 @@ export class ExpressApp {
         this._app = ExceptionHandler.notFoundHandler(this._app);
     }
 
-    // ── public lifecycle ───────────────────────────────────────────────────
-
     async _init(): Promise<void> {
         Logger.getInstance().info('Server :: Starting...');
+        // In development, run migrations automatically
+        // In production, migrations should be run separately via CI/CD
+        const env = process.env['NODE_ENV'] ?? 'development';
+        const runMigrations = env === 'development' || process.env['AUTO_MIGRATE'] === 'true';
 
-        await this.db.initialize();
+        await this.db.initialize({ skipMigrations: !runMigrations });
 
-        const port = EnvConfig.getConfig().PORT;
+        const port = ConfigService.getPort();
         this.server = this._app.listen(port, () => {
-            const c = EnvConfig.getConfig();
-            Logger.getInstance().info(`🚀 Server running on ${EnvConfig.getApiUrl()}`);
-            Logger.getInstance().info(`📦 Environment: ${c.NODE_ENV.toUpperCase()}`);
+            const actualPort = (this.server?.address() as any)?.port || port;
+            Logger.getInstance().info(`🚀 Server running on http://localhost:${actualPort}`);
+            Logger.getInstance().info(`📦 Environment: ConfigService.getNodeEnv().toUpperCase()`);
             Logger.getInstance().info(`🗄️  Database mode: active`);
+            Logger.getInstance().info(`🔄 Migrations: ${runMigrations ? 'auto' : 'manual'}`);
         }).on('error', (err: Error) => {
             Logger.getInstance().error(`Server error: ${err.message}`);
         });

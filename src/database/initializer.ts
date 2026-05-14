@@ -1,28 +1,23 @@
+// src/database/initializer.ts
 import type { IDatabaseConfig } from '../interfaces/core/config';
 import type { DatabaseContainer } from '../config/database.config';
 import { buildDatabaseContainer, checkDatabaseHealth } from '../config/database.config';
 import Logger from '../logger';
 
-/**
- * DatabaseInitializer: thin lifecycle wrapper used by the app bootstrap.
- *
- * Receives IDatabaseConfig via constructor — no singleton dependency.
- * Tests pass a fake config; production passes the real config from ConfigService.
- */
 export class DatabaseInitializer {
     private container: DatabaseContainer | null = null;
     private initialized = false;
 
-    constructor(private readonly dbConfig: IDatabaseConfig) {}
+    constructor(private readonly dbConfig: IDatabaseConfig) { }
 
-    async initialize(): Promise<void> {
+    async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
         if (this.initialized) {
             Logger.getInstance().info('DatabaseInitializer :: already initialized');
             return;
         }
 
         Logger.getInstance().info('DatabaseInitializer :: starting...');
-        this.container = await buildDatabaseContainer(this.dbConfig);
+        this.container = await buildDatabaseContainer(this.dbConfig, options);
         this.initialized = true;
         Logger.getInstance().info('DatabaseInitializer :: ready');
     }
@@ -38,7 +33,7 @@ export class DatabaseInitializer {
     }
 
     async healthCheck(): Promise<Record<string, boolean>> {
-        if (!this.container) return {};
+        if (!this.container || !this.initialized) return {};
         return checkDatabaseHealth(this.container.resolver);
     }
 

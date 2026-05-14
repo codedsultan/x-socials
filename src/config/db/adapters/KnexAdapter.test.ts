@@ -46,7 +46,8 @@ const pgConfig = (overrides: Partial<IDbConnectionConfig> = {}): IDbConnectionCo
 
 const sqliteConfig = (overrides: Partial<IDbConnectionConfig> = {}): IDbConnectionConfig => ({
   name: "test-sqlite",
-  driver: "sqlite3",
+  // driver: "sqlite3",
+  driver: "better-sqlite3",
   filename: ":memory:",
   ...overrides,
 });
@@ -231,9 +232,9 @@ describe("KnexAdapter", () => {
       expect(new KnexAdapter(pgConfig({ driver: "mysql2", name: "m" })).isMySQL).toBe(true);
     });
 
-    it("isSQLite is true for sqlite3", () => {
-      expect(new KnexAdapter(sqliteConfig({ driver: "sqlite3" })).isSQLite).toBe(true);
-    });
+    // it("isSQLite is true for sqlite3", () => {
+    //   expect(new KnexAdapter(sqliteConfig({ driver: "sqlite3" })).isSQLite).toBe(true);
+    // });
 
     it("isSQLite is true for better-sqlite3", () => {
       expect(new KnexAdapter(sqliteConfig({ driver: "better-sqlite3" })).isSQLite).toBe(true);
