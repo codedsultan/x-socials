@@ -167,7 +167,6 @@ COPY --from=builder --chown=nodejs:nodejs /app/package.json ./
 # Copy health check script
 COPY --chown=nodejs:nodejs healthcheck.js ./
 
-RUN pnpm add tsx
 # Switch to non-root user
 USER nodejs
 
