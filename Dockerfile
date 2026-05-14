@@ -22,11 +22,11 @@ COPY . .
 # # Build the application (includes compiling TypeScript)
 RUN pnpm build
 
-RUN echo "=== Copying database assets ===" && \
-    mkdir -p database/migrations && \
-    cp -r database/migrations database/ && \
-    cp -r database/seeds database/ && \
-    cp -r database/scripts database/
+# RUN echo "=== Copying database assets ===" && \
+#     mkdir -p database/migrations && \
+#     cp -r database/migrations database/ && \
+#     cp -r database/seeds database/ && \
+#     cp -r database/scripts database/
 
 # # # IMPORTANT: Also compile migration scripts (ignoring tsconfig.json)
 # RUN mkdir -p dist/scripts && \
