@@ -33,12 +33,22 @@ RUN mkdir -p dist && \
     npx tsc scripts/**/*.ts \
     --outDir dist \
     --target ES2022 \
-    --module ES2022 \
+    --module CommonJS \
     --moduleResolution bundler \
     --esModuleInterop \
     --resolveJsonModule \
     --skipLibCheck \
     --ignoreConfig
+
+# npx tsc scripts/**/*.ts \
+# --outDir dist \
+# --target ES2022 \
+# --module ES2022 \
+# --moduleResolution bundler \
+# --esModuleInterop \
+# --resolveJsonModule \
+# --skipLibCheck \
+# --ignoreConfig
 
 # Debug: List compiled files to verify
 RUN ls -la dist/scripts/ && \
