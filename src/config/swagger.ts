@@ -9,7 +9,7 @@ class SwaggerDocs {
 
     private static getOptions() {
         const configService = ConfigService;
-        const config = configService.getFullConfig();
+        // const config = configService.getFullConfig();
         const isProduction = configService.isProduction();
         const isStaging = configService.isStaging();
         const serverUrl = configService.getApiUrl();
@@ -96,7 +96,7 @@ class SwaggerDocs {
      */
     public static init(_express: Application): Application {
         const configService = ConfigService;
-        const config = configService.getFullConfig();
+        // const config = configService.getFullConfig();
         const nodeEnv = configService.getNodeEnv();
 
         const enableSwagger = configService.isSwaggerEnabled();

@@ -18,7 +18,7 @@ vi.mock('../../../config/database.config', async () => {
     const actual = await vi.importActual('../../../config/database.config');
     return {
         ...actual,
-        buildDatabaseContainer: vi.fn().mockImplementation(async (config, options) => ({
+        buildDatabaseContainer: vi.fn().mockImplementation(async (_config, _options) => ({
             registry: {},
             resolver: {
                 disconnectAll: vi.fn().mockResolvedValue(undefined),
