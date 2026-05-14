@@ -1,6 +1,6 @@
 // scripts/test-repository.ts
-import { ConfigService } from '../src/config/config.service';
-import { DatabaseInitializer } from '../src/database/initializer';
+import { ConfigService } from '../../src/config/config.service';
+import { DatabaseInitializer } from '../../src/database/initializer';
 
 async function testRepository() {
     const dbConfig = ConfigService.getDatabaseConfig();

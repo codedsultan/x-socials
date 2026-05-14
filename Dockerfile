@@ -22,6 +22,35 @@ RUN ls -la && ls -la src/ || echo "src directory not found"
 # Build the application (includes compiling TypeScript)
 RUN pnpm build
 
+
+# Copy database assets (migrations, seeds) to dist
+RUN mkdir -p dist/database && \
+    cp -r database/migrations dist/database/ && \
+    cp -r database/seeds dist/database/ 2>/dev/null || true
+
+# Compile knexfile.ts to knexfile.js in dist
+RUN npx tsc knexfile.ts \
+    --outDir dist \
+    --target ES2022 \
+    --module CommonJS \
+    --moduleResolution node16 \
+    --esModuleInterop \
+    --resolveJsonModule \
+    --skipLibCheck \
+    --ignoreConfig
+
+# Compile database scripts (the runner scripts, not migration templates)
+RUN mkdir -p dist/database/scripts && \
+    npx tsc database/scripts/**/*.ts \
+    --outDir dist/database/scripts \
+    --target ES2022 \
+    --module CommonJS \
+    --moduleResolution node16 \
+    --esModuleInterop \
+    --resolveJsonModule \
+    --skipLibCheck \
+    --ignoreConfig
+
 # # # IMPORTANT: Also compile migration scripts (ignoring tsconfig.json)
 # RUN mkdir -p dist/scripts && \
 #     npx tsc scripts/migrations/*.ts --outDir dist/scripts --esModuleInterop --resolveJsonModule --skipLibCheck --ignoreConfig && \
@@ -29,16 +58,16 @@ RUN pnpm build
 
 # # RUN npx tsc -p tsconfig.scripts.json
 # IMPORTANT: Also compile migration scripts
-RUN mkdir -p dist && \
-    npx tsc scripts/**/*.ts \
-    --outDir dist \
-    --target ES2022 \
-    --module CommonJS \
-    --moduleResolution bundler \
-    --esModuleInterop \
-    --resolveJsonModule \
-    --skipLibCheck \
-    --ignoreConfig
+# RUN mkdir -p dist && \
+#     npx tsc scripts/**/*.ts \
+#     --outDir dist \
+#     --target ES2022 \
+#     --module CommonJS \
+#     --moduleResolution bundler \
+#     --esModuleInterop \
+#     --resolveJsonModule \
+#     --skipLibCheck \
+#     --ignoreConfig
 
 # npx tsc scripts/**/*.ts \
 # --outDir dist \
@@ -50,10 +79,18 @@ RUN mkdir -p dist && \
 # --skipLibCheck \
 # --ignoreConfig
 
-# Debug: List compiled files to verify
-RUN ls -la dist/scripts/ && \
-    ls -la dist/scripts/migrations/ || echo "No migrations folder" && \
-    ls -la dist/scripts/db/ || echo "No db folder"
+# # Debug: List compiled files to verify
+# RUN ls -la dist/scripts/ && \
+#     ls -la dist/scripts/migrations/ || echo "No migrations folder" && \
+#     ls -la dist/scripts/db/ || echo "No db folder"
+# After building, verify the structure
+
+RUN echo "=== Verifying compiled structure ===" && \
+    ls -la dist/src/config/ && \
+    ls -la dist/src/database/adapters/ && \
+    ls -la dist/database/migrations/ && \
+    ls -la dist/database/scripts/migrations/
+
 
 # Remove dev dependencies
 RUN pnpm prune --prod

@@ -1,6 +1,6 @@
 // scripts/migrations/down.ts
-import { ConfigService } from '../../src/config/config.service';
-import { KnexAdapter } from '../../src/database/adapters/KnexAdapter';
+import { ConfigService } from '../../../src/config/config.service';
+import { KnexAdapter } from '../../../src/database/adapters/KnexAdapter';
 
 async function getAdapters(): Promise<{ name: string; adapter: KnexAdapter }[]> {
     const dbConfig = ConfigService.getDatabaseConfig();
