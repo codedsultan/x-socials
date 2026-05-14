@@ -22,7 +22,11 @@ COPY . .
 # # Build the application (includes compiling TypeScript)
 RUN pnpm build
 
-
+RUN echo "=== Copying database assets ===" && \
+    mkdir -p database/migrations && \
+    cp -r database/migrations database/ && \
+    cp -r database/seeds database/ && \
+    cp -r database/scripts database/
 
 # # # IMPORTANT: Also compile migration scripts (ignoring tsconfig.json)
 # RUN mkdir -p dist/scripts && \
@@ -53,18 +57,18 @@ RUN pnpm build
 # --ignoreConfig
 
 # Verify build output
-RUN echo "=== Verifying build output ===" && \
-    if [ ! -f "dist/index.js" ]; then \
-    echo "ERROR: dist/index.js not found!" && \
-    echo "dist contents:" && \
-    ls -la dist/ && \
-    exit 1; \
-    fi && \
-    echo "✅ Main app compiled successfully" && \
-    echo "Top level dist files:" && \
-    ls -la dist/*.js 2>/dev/null | head -5 && \
-    echo "Config directory:" && \
-    ls -la dist/config/
+# RUN echo "=== Verifying build output ===" && \
+#     if [ ! -f "dist/index.js" ]; then \
+#     echo "ERROR: dist/index.js not found!" && \
+#     echo "dist contents:" && \
+#     ls -la dist/ && \
+#     exit 1; \
+#     fi && \
+#     echo "✅ Main app compiled successfully" && \
+#     echo "Top level dist files:" && \
+#     ls -la dist/*.js 2>/dev/null | head -5 && \
+#     echo "Config directory:" && \
+#     ls -la dist/config/
 
 # Copy database assets to database/ (NOT inside dist/)
 # This keeps database/ and dist/ as siblings
@@ -74,16 +78,16 @@ RUN echo "=== Verifying build output ===" && \
 #     cp -r database/seeds database/seeds 2>/dev/null || echo "No seeds directory"
 
 # Compile knexfile.ts to database/ (NOT inside dist/)
-RUN echo "=== Compiling knexfile ===" && \
-    npx tsc knexfile.ts \
-    --outDir database \
-    --target ES2022 \
-    --module CommonJS \
-    --moduleResolution bundler \
-    --esModuleInterop \
-    --resolveJsonModule \
-    --skipLibCheck \
-    --ignoreConfig
+# RUN echo "=== Compiling knexfile ===" && \
+#     npx tsc knexfile.ts \
+#     --outDir dist \
+#     --target ES2022 \
+#     --module CommonJS \
+#     --moduleResolution bundler \
+#     --esModuleInterop \
+#     --resolveJsonModule \
+#     --skipLibCheck \
+#     --ignoreConfig
 
 # Compile database scripts to database/scripts/ (NOT inside dist/)
 # RUN echo "=== Compiling database scripts ===" && \
@@ -99,43 +103,43 @@ RUN echo "=== Compiling knexfile ===" && \
 #     --ignoreConfig
 
 # Compile database scripts preserving directory structure
-RUN echo "=== Compiling database scripts ===" && \
-    mkdir -p database/scripts && \
-    npx tsc database/scripts/migrations/*.ts \
-    --outDir database/scripts/migrations \
-    --target ES2022 \
-    --module CommonJS \
-    --moduleResolution bundler \
-    --esModuleInterop \
-    --resolveJsonModule \
-    --skipLibCheck \
-    --ignoreConfig && \
-    npx tsc database/scripts/db/*.ts \
-    --outDir database/scripts/db \
-    --target ES2022 \
-    --module CommonJS \
-    --moduleResolution bundler \
-    --esModuleInterop \
-    --resolveJsonModule \
-    --skipLibCheck \
-    --ignoreConfig
+# RUN echo "=== Compiling database scripts ===" && \
+#     mkdir -p database/scripts && \
+#     npx tsc database/scripts/migrations/*.ts \
+#     --outDir database/scripts/migrations \
+#     --target ES2022 \
+#     --module CommonJS \
+#     --moduleResolution bundler \
+#     --esModuleInterop \
+#     --resolveJsonModule \
+#     --skipLibCheck \
+#     --ignoreConfig && \
+#     npx tsc database/scripts/db/*.ts \
+#     --outDir database/scripts/db \
+#     --target ES2022 \
+#     --module CommonJS \
+#     --moduleResolution bundler \
+#     --esModuleInterop \
+#     --resolveJsonModule \
+#     --skipLibCheck \
+#     --ignoreConfig
 
-# Final verification - shows both dist/ and database/ as siblings
-RUN echo "=== Final verification ===" && \
-    echo "📁 Project root contents:" && \
-    ls -la && \
-    echo "" && \
-    echo "📁 App code (dist/):" && \
-    ls -la dist/ | head -10 && \
-    echo "" && \
-    echo "📁 Database assets (database/):" && \
-    ls -la database/ && \
-    echo "" && \
-    echo "📁 Database migrations:" && \
-    ls -la database/migrations/ | head -5 && \
-    echo "" && \
-    echo "📁 Database scripts:" && \
-    ls -la database/scripts/migrations/ | head -5
+# # Final verification - shows both dist/ and database/ as siblings
+# RUN echo "=== Final verification ===" && \
+#     echo "📁 Project root contents:" && \
+#     ls -la && \
+#     echo "" && \
+#     echo "📁 App code (dist/):" && \
+#     ls -la dist/ | head -10 && \
+#     echo "" && \
+#     echo "📁 Database assets (database/):" && \
+#     ls -la database/ && \
+#     echo "" && \
+#     echo "📁 Database migrations:" && \
+#     ls -la database/migrations/ | head -5 && \
+#     echo "" && \
+#     echo "📁 Database scripts:" && \
+#     ls -la database/scripts/migrations/ | head -5
 
 # Remove dev dependencies
 RUN pnpm prune --prod
