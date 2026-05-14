@@ -2,7 +2,7 @@
  * Enable basic express APIs middleware
  */
 // src/middlewares/Http.ts
-import { json, urlencoded } from "express";
+import { json, urlencoded, type Request, type Response, type NextFunction } from "express";
 import type { Application } from "express";
 import helmet from "helmet";
 import compression from "compression";
@@ -11,6 +11,14 @@ import Logger from "../logger";
 class Http {
   public static mount(_express: Application): Application {
     Logger.getInstance().info("App :: Registering HTTP middleware...");
+
+    // compression (via on-finished) + morgan + monitoring + otel-http each add
+    // finish listeners to ServerResponse. Raise the per-response limit before
+    // any other middleware runs so Node never fires MaxListenersExceededWarning.
+    _express.use((_req: Request, res: Response, next: NextFunction) => {
+      res.setMaxListeners(20);
+      next();
+    });
 
     // Security headers
     _express.use(helmet());

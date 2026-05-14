@@ -83,6 +83,9 @@ function makeRequestTriple(overrides: { method?: string; path?: string; routePat
         on: vi.fn((event: string, cb: () => void) => {
             if (event === 'finish') finishListeners.push(cb);
         }),
+        once: vi.fn((event: string, cb: () => void) => {
+            if (event === 'finish') finishListeners.push(cb);
+        }),
         /** Simulate the response finishing */
         finish: () => finishListeners.forEach((cb) => cb()),
     };
@@ -140,7 +143,7 @@ describe('Monitoring', () => {
         it('registers a finish listener on the response', () => {
             const { req, res, next } = makeRequestTriple();
             Monitoring.getInstance().middleware()(req, res, next);
-            expect(res.on).toHaveBeenCalledWith('finish', expect.any(Function));
+            expect(res.once).toHaveBeenCalledWith('finish', expect.any(Function));
         });
 
         it('records duration and request count on finish', () => {

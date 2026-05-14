@@ -17,50 +17,32 @@ const prometheusExporter = new PrometheusExporter(
     () => console.log(`📊 Prometheus metrics: http://localhost:${prometheusPort}${prometheusEndpoint}`),
 );
 
-let sdk: NodeSDK | null = null;
-
-// Create SDK with optimized settings
-if (isProduction || enableTraces) {
-    sdk = new NodeSDK({
-        metricReader: prometheusExporter,
-        instrumentations: [
-            getNodeAutoInstrumentations({
-                '@opentelemetry/instrumentation-http': {
-                    enabled: true,
-                    // Ignore health check endpoints
-                    ignoreIncomingRequestHook: (req) =>
-                        ['/health', '/metrics', '/ready', '/live'].includes(req.url ?? ''),
-                    // Add request hook to reduce overhead
-                    requestHook: (span, req) => {
-                        // Only add minimal attributes
-                        span.setAttribute('http.method', req.method!);
-                    },
-                    // Disable detailed timing if not needed
-                    requireParentforOutgoingSpans: true,
+// Express instrumentation adds finish listeners per matched layer; only
+// enable it when full distributed traces are actually wanted.
+const sdk = new NodeSDK({
+    metricReader: prometheusExporter,
+    instrumentations: [
+        getNodeAutoInstrumentations({
+            '@opentelemetry/instrumentation-http': {
+                enabled: isProduction || enableTraces,
+                ignoreIncomingRequestHook: (req) =>
+                    ['/health', '/metrics', '/ready', '/live'].includes(req.url ?? ''),
+                requestHook: (span, req) => {
+                    span.setAttribute('http.method', req.method!);
                 },
-                '@opentelemetry/instrumentation-express': {
-                    enabled: isProduction || enableTraces,
-                    // Disable automatic span creation for all routes (reduces listeners)
-                    ignoreLayers: enableTraces ? [] : ['middleware', 'request_handler'],
-                },
-                '@opentelemetry/instrumentation-fs': { enabled: false },
-            }),
-        ],
-    });
-} else {
-    // Metrics-only mode with minimal overhead
-    sdk = new NodeSDK({
-        metricReader: prometheusExporter,
-        instrumentations: [
-            getNodeAutoInstrumentations({
-                '@opentelemetry/instrumentation-http': {
-                    enabled: false // Disable HTTP instrumentation in dev
-                },
-                '@opentelemetry/instrumentation-express': { enabled: false },
-            }),
-        ],
-    });
-}
+                requireParentforOutgoingSpans: true,
+            },
+            // Only enable Express layer tracing when full traces are requested.
+            // Without this guard it adds 2+ finish listeners per request even
+            // when traces are disabled, pushing ServerResponse past the default
+            // 10-listener limit when combined with compression + morgan + monitoring.
+            '@opentelemetry/instrumentation-express': {
+                enabled: enableTraces,
+            },
+            '@opentelemetry/instrumentation-fs': { enabled: false },
+        }),
+    ],
+});
 
 sdk.start();
 console.log('🔍 OpenTelemetry SDK started');
