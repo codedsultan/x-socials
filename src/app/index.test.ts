@@ -1,3 +1,4 @@
+// src/app/index.test.ts
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 
@@ -30,6 +31,40 @@ vi.mock('../config/env', () => ({
     },
 }));
 
+// Fix the ConfigService mock to properly return API_PREFIX
+vi.mock('../config/config.service', () => ({
+    default: {
+        getInstance: vi.fn(() => ({
+            getServerConfig: vi.fn(() => ({
+                PORT: 5000,
+                NODE_ENV: 'test',
+                SERVER_MAINTENANCE: false,
+                API_PREFIX: 'api',
+                CORS_ENABLED: true,
+            })),
+            getPort: vi.fn(() => 5000),
+            getNodeEnv: vi.fn(() => 'test'),
+            isMaintenance: vi.fn(() => false),
+            isSwaggerEnabled: vi.fn(() => false),
+            getApiUrl: vi.fn(() => 'http://localhost:5000'),
+            initExpress: vi.fn((app: any) => app),
+        })),
+        getServerConfig: vi.fn(() => ({
+            PORT: 5000,
+            NODE_ENV: 'test',
+            SERVER_MAINTENANCE: false,
+            API_PREFIX: 'api',
+            CORS_ENABLED: true,
+        })),
+        getPort: vi.fn(() => 5000),
+        getNodeEnv: vi.fn(() => 'test'),
+        isMaintenance: vi.fn(() => false),
+        isSwaggerEnabled: vi.fn(() => false),
+        getApiUrl: vi.fn(() => 'http://localhost:5000'),
+        initExpress: vi.fn((app: any) => app),
+    },
+}));
+
 vi.mock('../config/swagger', () => ({ default: { init: vi.fn((app: unknown) => app) } }));
 
 vi.mock('../monitoring', () => ({
@@ -47,8 +82,6 @@ vi.mock('../middlewares/Morgan', () => ({ default: { mount: vi.fn((app: unknown)
 vi.mock('../middlewares/CORS', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
 
 vi.mock('../exceptions/Handler', () => {
-    // vi.fn() strips function arity. Express uses fn.length===4 to detect error handlers.
-    // We must manually set length=4 on each error handler mock.
     function makeErrHandler(impl: (...a: any[]) => void) {
         const fn = vi.fn(impl);
         Object.defineProperty(fn, 'length', { value: 4, configurable: true });
@@ -71,6 +104,10 @@ vi.mock('../exceptions/Handler', () => {
         },
     };
 });
+
+vi.mock('../../instrumentation', () => ({
+    shutdownTelemetry: vi.fn().mockResolvedValue(undefined),
+}));
 
 // ─── Fake DatabaseInitializer ─────────────────────────────────────────────────
 
@@ -110,7 +147,6 @@ describe('ExpressApp', () => {
             const res = await request(app.express).get('/');
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty('message');
-            // expect(res.body.environment).toBe('development');
             expect(res.body.environment).toBe('test');
         });
     });
@@ -170,7 +206,6 @@ describe('ExpressApp', () => {
         it('returns environment info', async () => {
             const res = await request(app.express).get('/api/environment');
             expect(res.status).toBe(200);
-            // expect(res.body.environment).toBe('development');
             expect(res.body.environment).toBe('test');
         });
     });
@@ -190,7 +225,6 @@ describe('ExpressApp', () => {
             const app1 = new ExpressApp(db1);
             const app2 = new ExpressApp(db2);
 
-            // They are independent objects
             expect(app1).not.toBe(app2);
             expect(app1.express).not.toBe(app2.express);
         });
