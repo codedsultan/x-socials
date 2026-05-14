@@ -86,10 +86,32 @@ RUN echo "=== Compiling knexfile ===" && \
     --ignoreConfig
 
 # Compile database scripts to database/scripts/ (NOT inside dist/)
+# RUN echo "=== Compiling database scripts ===" && \
+#     mkdir -p database/scripts && \
+#     npx tsc database/scripts/**/*.ts \
+#     --outDir database/scripts \
+#     --target ES2022 \
+#     --module CommonJS \
+#     --moduleResolution bundler \
+#     --esModuleInterop \
+#     --resolveJsonModule \
+#     --skipLibCheck \
+#     --ignoreConfig
+
+# Compile database scripts preserving directory structure
 RUN echo "=== Compiling database scripts ===" && \
     mkdir -p database/scripts && \
-    npx tsc database/scripts/**/*.ts \
-    --outDir database/scripts \
+    npx tsc database/scripts/migrations/*.ts \
+    --outDir database/scripts/migrations \
+    --target ES2022 \
+    --module CommonJS \
+    --moduleResolution bundler \
+    --esModuleInterop \
+    --resolveJsonModule \
+    --skipLibCheck \
+    --ignoreConfig && \
+    npx tsc database/scripts/db/*.ts \
+    --outDir database/scripts/db \
     --target ES2022 \
     --module CommonJS \
     --moduleResolution bundler \
@@ -97,6 +119,7 @@ RUN echo "=== Compiling database scripts ===" && \
     --resolveJsonModule \
     --skipLibCheck \
     --ignoreConfig
+
 # Final verification - shows both dist/ and database/ as siblings
 RUN echo "=== Final verification ===" && \
     echo "📁 Project root contents:" && \
