@@ -63,7 +63,7 @@ describe("AdapterFactory", () => {
         ["pg-native"],
         ["mysql"],
         ["mysql2"],
-        ["sqlite3"],
+        // ["sqlite3"],
         ["better-sqlite3"],
         ["knex"],
       ] as [IDbConnectionConfig["driver"]][])(

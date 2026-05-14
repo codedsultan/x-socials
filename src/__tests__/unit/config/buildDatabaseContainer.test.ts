@@ -7,29 +7,29 @@ vi.mock('../../../logger', () => ({
 
 // Mock the DB layer — we test the wiring logic, not adapter internals
 vi.mock('../../../database/core/DbRegistry', () => ({
-    DbRegistry: vi.fn().mockImplementation(function(this: Record<string, unknown>) {
-        this.enableSingleMode  = vi.fn();
+    DbRegistry: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+        this.enableSingleMode = vi.fn();
         this.disableSingleMode = vi.fn();
-        this.getDbForModel     = vi.fn().mockReturnValue('mongodb');
-        this.getDefaultDb      = vi.fn().mockReturnValue('mongodb');
-        this.getMode           = vi.fn().mockReturnValue('split');
+        this.getDbForModel = vi.fn().mockReturnValue('mongodb');
+        this.getDefaultDb = vi.fn().mockReturnValue('mongodb');
+        this.getMode = vi.fn().mockReturnValue('split');
     }),
 }));
 
 vi.mock('../../../database/core/DbResolver', () => ({
-    DbResolver: vi.fn().mockImplementation(function(this: Record<string, unknown>) {
-        this.connectAll              = vi.fn().mockResolvedValue(undefined);
-        this.disconnectAll           = vi.fn().mockResolvedValue(undefined);
+    DbResolver: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+        this.connectAll = vi.fn().mockResolvedValue(undefined);
+        this.disconnectAll = vi.fn().mockResolvedValue(undefined);
         this.registerModelsAndMigrate = vi.fn().mockResolvedValue(undefined);
-        this.getConfiguredTypes      = vi.fn().mockReturnValue(['mongodb']);
-        this.healthCheck             = vi.fn().mockResolvedValue({ mongodb: true });
-        this.getAdapterForModel      = vi.fn();
-        this.getAdapter              = vi.fn();
+        this.getConfiguredTypes = vi.fn().mockReturnValue(['mongodb']);
+        this.healthCheck = vi.fn().mockResolvedValue({ mongodb: true });
+        this.getAdapterForModel = vi.fn();
+        this.getAdapter = vi.fn();
     }),
 }));
 
 vi.mock('../../../factories/RepositoryFactory', () => ({
-    RepositoryFactory: vi.fn().mockImplementation(function(this: Record<string, unknown>) {
+    RepositoryFactory: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
         this.getRepository = vi.fn();
     }),
 }));
@@ -66,9 +66,17 @@ describe('buildDatabaseContainer', () => {
         expect(DbRegistry).toHaveBeenCalledWith(expect.any(Object), 'mongodb');
     });
 
+    // it('constructs DbResolver with the config and registry', async () => {
+    //     await buildDatabaseContainer(mongoOnlyConfig);
+    //     expect(DbResolver).toHaveBeenCalledWith(mongoOnlyConfig, expect.any(Object));
+    // });
     it('constructs DbResolver with the config and registry', async () => {
         await buildDatabaseContainer(mongoOnlyConfig);
-        expect(DbResolver).toHaveBeenCalledWith(mongoOnlyConfig, expect.any(Object));
+        expect(DbResolver).toHaveBeenCalledWith(
+            mongoOnlyConfig,
+            expect.any(Object),
+            undefined  // options parameter
+        );
     });
 
     it('calls connectAll on the resolver', async () => {

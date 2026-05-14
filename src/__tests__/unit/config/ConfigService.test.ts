@@ -1,41 +1,46 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// All vi.mock calls are hoisted. The issue is config.service.ts's default export
-// `= ConfigService.getInstance()` runs at module-load time. We must ensure the
-// builder mocks are in place before config.service.ts is first imported.
-// vi.mock hoisting guarantees that, but we also need the default export neutralised.
-
+// Mock logger
 vi.mock('../../../logger', () => ({
     default: {
-        getInstance: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+        getInstance: vi.fn(() => ({
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn()
+        })),
         _init: vi.fn(),
     },
 }));
 
-vi.mock('../../../config/builders/server.config.builder', () => ({
-    ServerConfigBuilder: vi.fn().mockImplementation(function(this: unknown) {
-        (this as { build: () => unknown }).build = vi.fn().mockReturnValue({
-            PORT: 3000, NODE_ENV: 'test', SERVER_MAINTENANCE: false,
-            API_BASE_URL: 'http://localhost:3000', ENABLE_SWAGGER: false, CORS_ENABLED: true,
-        });
-    }),
-}));
-
-vi.mock('../../../config/builders/database.config.builder', () => ({
-    DatabaseConfigBuilder: vi.fn().mockImplementation(function(this: unknown) {
-        (this as { build: () => unknown }).build = vi.fn().mockReturnValue({
-            mongodb: { uri: 'mongodb://localhost/test', dbName: 'test', socketTimeoutMS: 5000, serverSelectionTimeoutMS: 3000 },
-            defaultDb: 'mongodb',
-            dbMode: 'split',
-        });
-    }),
-}));
+// Mock dotenv config to not actually load files in tests
+vi.mock('dotenv/config', () => ({}));
 
 import { ConfigService } from '../../../config/config.service';
 
 describe('ConfigService', () => {
-    beforeEach(() => ConfigService.resetInstance());
-    afterEach(() => ConfigService.resetInstance());
+    // Save original env
+    const originalEnv = { ...process.env };
+
+    beforeEach(() => {
+        // Reset env to test defaults
+        process.env.NODE_ENV = 'test';
+        process.env.PORT = '3000';
+        process.env.SERVER_MAINTENANCE = 'false';
+        process.env.ENABLE_SWAGGER = 'false';
+        process.env.CORS_ENABLED = 'true';
+        process.env.API_BASE_URL = 'http://localhost:3000';
+        process.env.DEFAULT_DB = 'mongodb';
+        process.env.MONGO_URI = 'mongodb://localhost/test';
+        process.env.MONGO_DB_NAME = 'test';
+
+        ConfigService.resetInstance();
+    });
+
+    afterEach(() => {
+        // Restore original env
+        process.env = { ...originalEnv };
+        ConfigService.resetInstance();
+    });
 
     it('getInstance() returns a singleton', () => {
         const a = ConfigService.getInstance();
@@ -50,7 +55,7 @@ describe('ConfigService', () => {
         expect(a).not.toBe(b);
     });
 
-    it('getServerConfig() returns the mocked server config', () => {
+    it('getServerConfig() returns the server config', () => {
         const cfg = ConfigService.getInstance().getServerConfig();
         expect(cfg.NODE_ENV).toBe('test');
         expect(cfg.PORT).toBe(3000);
@@ -81,11 +86,11 @@ describe('ConfigService', () => {
     });
 
     it('isServerMaintenance() is false when SERVER_MAINTENANCE=false', () => {
-        expect(ConfigService.getInstance().isServerMaintenance()).toBe(false);
+        expect(ConfigService.isServerMaintenance()).toBe(false);
     });
 
     it('getDefaultDb() returns defaultDb from database config', () => {
-        expect(ConfigService.getInstance().getDefaultDb()).toBe('mongodb');
+        expect(ConfigService.getDefaultDb()).toBe('mongodb');
     });
 
     it('getFullConfig() has both server and databases keys', () => {

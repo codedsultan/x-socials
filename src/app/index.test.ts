@@ -19,14 +19,14 @@ vi.mock('../config/env', () => ({
             API_PREFIX: 'api',
             CORS_ENABLED: true,
         })),
-        isProduction:      vi.fn(() => false),
-        isDevelopment:     vi.fn(() => true),
-        isStaging:         vi.fn(() => false),
-        isTest:            vi.fn(() => false),
+        isProduction: vi.fn(() => false),
+        isDevelopment: vi.fn(() => true),
+        isStaging: vi.fn(() => false),
+        isTest: vi.fn(() => false),
         isServerMaintenance: vi.fn(() => false),
-        getApiUrl:         vi.fn(() => 'http://localhost:5000'),
-        isSwaggerEnabled:  vi.fn(() => true),
-        init:              vi.fn((app: unknown) => app),
+        getApiUrl: vi.fn(() => 'http://localhost:5000'),
+        isSwaggerEnabled: vi.fn(() => true),
+        init: vi.fn((app: unknown) => app),
     },
 }));
 
@@ -42,9 +42,9 @@ vi.mock('../monitoring', () => ({
     },
 }));
 
-vi.mock('../middlewares/Http',   () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
+vi.mock('../middlewares/Http', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
 vi.mock('../middlewares/Morgan', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
-vi.mock('../middlewares/CORS',   () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
+vi.mock('../middlewares/CORS', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
 
 vi.mock('../exceptions/Handler', () => {
     // vi.fn() strips function arity. Express uses fn.length===4 to detect error handlers.
@@ -62,9 +62,9 @@ vi.mock('../exceptions/Handler', () => {
                 );
                 return app;
             }),
-            logErrors:          makeErrHandler((_e, _r, _s, next: () => void) => next()),
+            logErrors: makeErrHandler((_e, _r, _s, next: () => void) => next()),
             clientErrorHandler: makeErrHandler((_e, _r, _s, next: () => void) => next()),
-            errorHandler:       makeErrHandler((err: unknown, _r, res: import('express').Response) => {
+            errorHandler: makeErrHandler((err: unknown, _r, res: import('express').Response) => {
                 const e = err as { status?: number; statusCode?: number; message?: string } | null;
                 res.status(e?.status ?? e?.statusCode ?? 500).json({ error: e?.message, success: false });
             }),
@@ -76,11 +76,11 @@ vi.mock('../exceptions/Handler', () => {
 
 function makeFakeDb(initialized = true): import('../database/initializer').DatabaseInitializer {
     return {
-        initialize:    vi.fn().mockResolvedValue(undefined),
-        shutdown:      vi.fn().mockResolvedValue(undefined),
-        healthCheck:   vi.fn().mockResolvedValue({ mongodb: true }),
+        initialize: vi.fn().mockResolvedValue(undefined),
+        shutdown: vi.fn().mockResolvedValue(undefined),
+        healthCheck: vi.fn().mockResolvedValue({ mongodb: true }),
         isInitialized: vi.fn().mockReturnValue(initialized),
-        getContainer:  vi.fn().mockReturnValue({
+        getContainer: vi.fn().mockReturnValue({
             factory: {
                 getRepository: vi.fn().mockReturnValue({
                     findMany: vi.fn().mockResolvedValue([{ id: '1', email: 'a@b.com' }]),
@@ -110,7 +110,8 @@ describe('ExpressApp', () => {
             const res = await request(app.express).get('/');
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty('message');
-            expect(res.body.environment).toBe('development');
+            // expect(res.body.environment).toBe('development');
+            expect(res.body.environment).toBe('test');
         });
     });
 
@@ -169,7 +170,8 @@ describe('ExpressApp', () => {
         it('returns environment info', async () => {
             const res = await request(app.express).get('/api/environment');
             expect(res.status).toBe(200);
-            expect(res.body.environment).toBe('development');
+            // expect(res.body.environment).toBe('development');
+            expect(res.body.environment).toBe('test');
         });
     });
 

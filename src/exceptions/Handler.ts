@@ -3,7 +3,7 @@
  */
 
 import type { Application } from "express";
-import EnvConfig from "../config/env";
+import ConfigService from "../config/config.service";
 import Logger from "../logger";
 import ApiError from "../exceptions/ApiError";
 import StatusCodes from "../constants/statusCodes";
@@ -92,7 +92,8 @@ class ExceptionHandler {
     err.statusCode = err.statusCode || StatusCodes.INTERNAL_SERVER_ERROR;
     err.message = err.message || StringValues.INTERNAL_SERVER_ERROR;
 
-    const apiPrefix = EnvConfig.getConfig().API_PREFIX;
+    const configService = ConfigService;
+    const apiPrefix = configService.getServerConfig().API_PREFIX;
     console.log(req.originalUrl);
 
     if (req.originalUrl.includes(`/${apiPrefix}/`)) {

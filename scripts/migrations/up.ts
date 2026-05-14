@@ -1,0 +1,118 @@
+// scripts/migrations/up.ts
+import { ConfigService } from '../../src/config/config.service';
+import { KnexAdapter } from '../../src/database/adapters/KnexAdapter';
+
+interface AdapterInfo {
+    name: string;
+    adapter: KnexAdapter;
+}
+
+async function getAdapters(): Promise<AdapterInfo[]> {
+    const dbConfig = ConfigService.getDatabaseConfig();
+    const adapters: AdapterInfo[] = [];
+
+    // SQLite
+    if (dbConfig.sqlite) {
+        const config = {
+            client: dbConfig.sqlite.client || 'better-sqlite3',
+            connection: { filename: dbConfig.sqlite.filename },
+            useNullAsDefault: true
+        };
+        adapters.push({
+            name: 'sqlite',
+            adapter: new KnexAdapter(config)
+        });
+    }
+
+    // MySQL
+    if (dbConfig.mysql) {
+        const config = {
+            client: dbConfig.mysql.client || 'mysql2',
+            connection: {
+                host: dbConfig.mysql.host,
+                port: dbConfig.mysql.port,
+                database: dbConfig.mysql.database,
+                user: dbConfig.mysql.user,
+                password: dbConfig.mysql.password
+            }
+        };
+        adapters.push({
+            name: 'mysql',
+            adapter: new KnexAdapter(config)
+        });
+    }
+
+    // PostgreSQL
+    if (dbConfig.postgres) {
+        const config = {
+            client: dbConfig.postgres.client || 'pg',
+            connection: {
+                host: dbConfig.postgres.host,
+                port: dbConfig.postgres.port,
+                database: dbConfig.postgres.database,
+                user: dbConfig.postgres.user,
+                password: dbConfig.postgres.password,
+                ssl: dbConfig.postgres.ssl || false
+            }
+        };
+        adapters.push({
+            name: 'postgres',
+            adapter: new KnexAdapter(config)
+        });
+    }
+
+    return adapters;
+}
+
+async function up(): Promise<void> {
+    console.log('🚀 Running migrations...\n');
+
+    const adapters = await getAdapters();
+
+    if (adapters.length === 0) {
+        console.log('ℹ️  No database adapters configured');
+        process.exit(0);
+    }
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const { name, adapter } of adapters) {
+        try {
+            console.log(`📦 Migrating ${name.toUpperCase()}...`);
+            await adapter.connect();
+
+            const migrations = await adapter.runMigrations();
+
+            if (migrations.length === 0) {
+                console.log(`   ✅ ${name} already up to date`);
+            } else {
+                console.log(`   ✅ ${name} ran ${migrations.length} migration(s):`);
+                migrations.forEach(m => console.log(`      - ${m}`));
+            }
+
+            await adapter.disconnect();
+            successCount++;
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`   ❌ ${name} migration failed:`, errorMessage);
+            failureCount++;
+        }
+        console.log('');
+    }
+
+    console.log(`📊 Summary: ${successCount} succeeded, ${failureCount} failed`);
+
+    if (failureCount > 0) {
+        process.exit(1);
+    }
+
+    console.log('✅ All migrations completed successfully');
+    process.exit(0);
+}
+
+up().catch((error: unknown) => {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Migration failed:', errorMessage);
+    process.exit(1);
+});
