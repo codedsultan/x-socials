@@ -33,7 +33,7 @@ RUN npx tsc knexfile.ts \
     --outDir dist \
     --target ES2022 \
     --module CommonJS \
-    --moduleResolution node16 \
+    --moduleResolution bundler \
     --esModuleInterop \
     --resolveJsonModule \
     --skipLibCheck \
@@ -45,7 +45,7 @@ RUN mkdir -p dist/database/scripts && \
     --outDir dist/database/scripts \
     --target ES2022 \
     --module CommonJS \
-    --moduleResolution node16 \
+    --moduleResolution bundler \
     --esModuleInterop \
     --resolveJsonModule \
     --skipLibCheck \
