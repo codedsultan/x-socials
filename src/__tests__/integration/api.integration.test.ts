@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { ExpressApp } from '../../app/index';
 
@@ -36,9 +36,10 @@ vi.mock('../../monitoring', () => ({
 }));
 
 vi.mock('../../config/swagger', () => ({ default: { init: vi.fn((app: unknown) => app) } }));
-vi.mock('../../middlewares/Http',   () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
+vi.mock('../../middlewares/Http', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
 vi.mock('../../middlewares/Morgan', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
-vi.mock('../../middlewares/CORS',   () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
+vi.mock('../../middlewares/CORS', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
+
 vi.mock('../../exceptions/Handler', () => {
     function makeErrHandler(impl: (...a: any[]) => void) {
         const fn = vi.fn(impl);
@@ -53,9 +54,9 @@ vi.mock('../../exceptions/Handler', () => {
                 );
                 return app;
             }),
-            logErrors:          makeErrHandler((_e, _r, _s, next: () => void) => next()),
+            logErrors: makeErrHandler((_e, _r, _s, next: () => void) => next()),
             clientErrorHandler: makeErrHandler((_e, _r, _s, next: () => void) => next()),
-            errorHandler:       makeErrHandler((err: unknown, _r, res: import('express').Response) => {
+            errorHandler: makeErrHandler((err: unknown, _r, res: import('express').Response) => {
                 const e = err as { status?: number; statusCode?: number; message?: string } | null;
                 res.status(e?.status ?? e?.statusCode ?? 500).json({ error: e?.message, success: false });
             }),
@@ -66,32 +67,52 @@ vi.mock('../../exceptions/Handler', () => {
 // ─── Fake DB with stubbed users ────────────────────────────────────────────────
 
 function makeFakeDb(): import('../../database/initializer').DatabaseInitializer {
+    // Create a mock repository that returns users
+    const mockRepository = {
+        findMany: vi.fn().mockResolvedValue([
+            { id: 'u1', email: 'alice@example.com', name: 'Alice' },
+            { id: 'u2', email: 'bob@example.com', name: 'Bob' },
+        ]),
+        findById: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+    };
+
+    // Create a mock factory that returns the repository
+    const mockFactory = {
+        getRepository: vi.fn().mockReturnValue(mockRepository),
+        getDomainRepository: vi.fn().mockReturnValue(mockRepository),
+    };
+
+    // Create a mock container
+    const mockContainer = {
+        factory: mockFactory,
+    };
+
     return {
-        initialize:    vi.fn().mockResolvedValue(undefined),
-        shutdown:      vi.fn().mockResolvedValue(undefined),
-        healthCheck:   vi.fn().mockResolvedValue({ mongodb: true }),
+        initialize: vi.fn().mockResolvedValue(undefined),
+        shutdown: vi.fn().mockResolvedValue(undefined),
+        healthCheck: vi.fn().mockResolvedValue({ mongodb: true, mysql: true }),
         isInitialized: vi.fn().mockReturnValue(true),
-        getContainer:  vi.fn().mockReturnValue({
-            factory: {
-                getRepository: vi.fn().mockReturnValue({
-                    findMany: vi.fn().mockResolvedValue([
-                        { id: 'u1', email: 'alice@example.com' },
-                        { id: 'u2', email: 'bob@example.com' },
-                    ]),
-                }),
-            },
-        }),
+        getContainer: vi.fn().mockReturnValue(mockContainer),
     } as unknown as import('../../database/initializer').DatabaseInitializer;
 }
 
 describe('API Integration Tests', () => {
-    const app = new ExpressApp(makeFakeDb()).express;
+    let app: ExpressApp;
+    let fakeDb: ReturnType<typeof makeFakeDb>;
+
+    beforeEach(() => {
+        fakeDb = makeFakeDb();
+        app = new ExpressApp(fakeDb);
+    });
 
     it('handles sequential requests without state leakage', async () => {
         const [r1, r2, r3] = await Promise.all([
-            request(app).get('/'),
-            request(app).get('/health'),
-            request(app).get('/live'),
+            request(app.express).get('/'),
+            request(app.express).get('/health'),
+            request(app.express).get('/live'),
         ]);
         expect(r1.status).toBe(200);
         expect(r2.status).toBe(200);
@@ -99,31 +120,37 @@ describe('API Integration Tests', () => {
     });
 
     it('all JSON responses have content-type header', async () => {
-        const res = await request(app).get('/');
+        const res = await request(app.express).get('/');
         expect(res.headers['content-type']).toContain('application/json');
     });
 
     it('sets custom headers on every response', async () => {
-        const res = await request(app).get('/health');
+        const res = await request(app.express).get('/health');
         expect(res.headers['x-environment']).toBeDefined();
         expect(res.headers['x-api-version']).toBe('1.0.0');
     });
 
     it('returns 404 for unknown routes', async () => {
-        const res = await request(app).get('/totally/unknown/route');
+        const res = await request(app.express).get('/totally/unknown/route');
         expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
     });
 
     it('GET /api/users returns actual repository data', async () => {
-        const res = await request(app).get('/api/users');
+        const res = await request(app.express).get('/api/users');
+
+        // Debug: Log the response if it's 404
+        if (res.status === 404) {
+            console.log('Available routes might not include /api/users');
+        }
+
         expect(res.status).toBe(200);
         expect(res.body.users).toHaveLength(2);
         expect(res.body.users[0].email).toBe('alice@example.com');
     });
 
     it('GET /ready returns 200 when db is initialized', async () => {
-        const res = await request(app).get('/ready');
+        const res = await request(app.express).get('/ready');
         expect(res.status).toBe(200);
     });
 });
