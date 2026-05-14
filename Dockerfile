@@ -83,6 +83,14 @@ RUN mkdir -p dist/database/scripts && \
 # RUN ls -la dist/scripts/ && \
 #     ls -la dist/scripts/migrations/ || echo "No migrations folder" && \
 #     ls -la dist/scripts/db/ || echo "No db folder"
+# After building, verify the structure
+
+RUN echo "=== Verifying compiled structure ===" && \
+    ls -la dist/src/config/ && \
+    ls -la dist/src/database/adapters/ && \
+    ls -la dist/database/migrations/ && \
+    ls -la dist/database/scripts/migrations/
+
 
 # Remove dev dependencies
 RUN pnpm prune --prod
