@@ -37,7 +37,7 @@ export type DbDriver =
   | "pg-native"
   | "mysql"
   | "mysql2"
-  | "sqlite3"
+  // | "sqlite3"
   | "better-sqlite3"
   | "knex"; // generic knex fallback
 

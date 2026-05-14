@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RepositoryFactory } from '../../../factories/RepositoryFactory';
-import { PostRepository }    from '../../../repositories/PostRepository';
-import { UserRepository }    from '../../../repositories/UserRepository';
+import { PostRepository } from '../../../repositories/PostRepository';
+import { UserRepository } from '../../../repositories/UserRepository';
 import { CommentRepository } from '../../../repositories/CommentRepository';
-import { LikeRepository }    from '../../../repositories/LikeRepository';
-import { OtpRepository }     from '../../../repositories/OtpRepository';
-import { TokenRepository }   from '../../../repositories/TokenRepository';
-import { BaseRepository }    from '../../../repositories/BaseRepository';
+import { LikeRepository } from '../../../repositories/LikeRepository';
+import { OtpRepository } from '../../../repositories/OtpRepository';
+import { TokenRepository } from '../../../repositories/TokenRepository';
+import { BaseRepository } from '../../../repositories/BaseRepository';
 import type { IDatabaseAdapter } from '../../../interfaces/db/IAdapter';
-import type { DbResolver }   from '../../../database/core/DbResolver';
+import type { DbResolver } from '../../../database/core/DbResolver';
 
 function makeMockAdapter(): IDatabaseAdapter {
     return {
@@ -16,6 +16,7 @@ function makeMockAdapter(): IDatabaseAdapter {
         registerModel: vi.fn(), migrate: vi.fn(),
         findOne: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn(), update: vi.fn(), delete: vi.fn(), withTransaction: vi.fn(),
+        getClient: vi.fn()
     };
 }
 
@@ -29,9 +30,9 @@ describe('RepositoryFactory', () => {
     let factory: RepositoryFactory;
 
     beforeEach(() => {
-        adapter  = makeMockAdapter();
+        adapter = makeMockAdapter();
         resolver = makeMockResolver(adapter);
-        factory  = new RepositoryFactory(resolver);
+        factory = new RepositoryFactory(resolver);
     });
 
     it('returns PostRepository for "Post"', () => {

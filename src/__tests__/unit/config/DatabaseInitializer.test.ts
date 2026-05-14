@@ -1,24 +1,36 @@
+// src/__tests__/unit/config/DatabaseInitializer.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { IDatabaseConfig } from '../../../interfaces/core/config';
 
+// Mock logger first
 vi.mock('../../../logger', () => ({
     default: {
-        getInstance: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+        getInstance: vi.fn(() => ({
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn()
+        })),
     },
 }));
 
-
-vi.mock('../../../config/database.config', () => ({
-    buildDatabaseContainer: vi.fn().mockResolvedValue({
-        registry: {} as any,
-        resolver: {
-            disconnectAll: vi.fn().mockResolvedValue(undefined),
-            healthCheck: vi.fn().mockResolvedValue({ mongodb: true }),
-        } as any,
-        factory: { getRepository: vi.fn() } as any,
-    }),
-    checkDatabaseHealth: vi.fn().mockResolvedValue({ mongodb: true }),
-}));
+// Mock database.config with proper implementation
+vi.mock('../../../config/database.config', async () => {
+    const actual = await vi.importActual('../../../config/database.config');
+    return {
+        ...actual,
+        buildDatabaseContainer: vi.fn().mockImplementation(async (_config, _options) => ({
+            registry: {},
+            resolver: {
+                disconnectAll: vi.fn().mockResolvedValue(undefined),
+                healthCheck: vi.fn().mockResolvedValue({ mongodb: true }),
+                connectAll: vi.fn().mockResolvedValue(undefined),
+                registerModelsAndMigrate: vi.fn().mockResolvedValue(undefined),
+            },
+            factory: { getRepository: vi.fn() },
+        })),
+        checkDatabaseHealth: vi.fn().mockResolvedValue({ mongodb: true }),
+    };
+});
 
 import { DatabaseInitializer } from '../../../database/initializer';
 import { buildDatabaseContainer } from '../../../config/database.config';
@@ -39,16 +51,6 @@ describe('DatabaseInitializer', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        // Re-mock so each test gets a fresh resolver with fresh spy calls
-        vi.mocked(buildDatabaseContainer).mockResolvedValue({
-            // registry: {},
-            registry: {} as any,
-            resolver: {
-                disconnectAll: vi.fn().mockResolvedValue(undefined),
-                healthCheck: vi.fn().mockResolvedValue({ mongodb: true }),
-            } as never,
-            factory: { getRepository: vi.fn() } as never,
-        });
         initializer = new DatabaseInitializer(fakeConfig);
     });
 
@@ -58,7 +60,7 @@ describe('DatabaseInitializer', () => {
 
     it('initialize() calls buildDatabaseContainer with the injected config', async () => {
         await initializer.initialize();
-        expect(buildDatabaseContainer).toHaveBeenCalledWith(fakeConfig);
+        expect(buildDatabaseContainer).toHaveBeenCalledWith(fakeConfig, undefined);
         expect(initializer.isInitialized()).toBe(true);
     });
 

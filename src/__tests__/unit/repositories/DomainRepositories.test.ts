@@ -1,22 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { IDatabaseAdapter } from '../../../interfaces/db/IAdapter';
-import { UserRepository }    from '../../../repositories/UserRepository';
-import { PostRepository }    from '../../../repositories/PostRepository';
+import { UserRepository } from '../../../repositories/UserRepository';
+import { PostRepository } from '../../../repositories/PostRepository';
 import { CommentRepository } from '../../../repositories/CommentRepository';
-import { LikeRepository }    from '../../../repositories/LikeRepository';
-import { OtpRepository }     from '../../../repositories/OtpRepository';
-import { TokenRepository }   from '../../../repositories/TokenRepository';
+import { LikeRepository } from '../../../repositories/LikeRepository';
+import { OtpRepository } from '../../../repositories/OtpRepository';
+import { TokenRepository } from '../../../repositories/TokenRepository';
 
 function makeAdapter(): IDatabaseAdapter {
     return {
         connect: vi.fn(), disconnect: vi.fn(), isConnected: vi.fn().mockResolvedValue(true),
         registerModel: vi.fn(), migrate: vi.fn().mockResolvedValue(undefined),
-        findOne:  vi.fn().mockResolvedValue(null),
+        findOne: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
-        create:   vi.fn().mockResolvedValue({ id: '1' }),
-        update:   vi.fn().mockResolvedValue({ id: '1' }),
-        delete:   vi.fn().mockResolvedValue(true),
+        create: vi.fn().mockResolvedValue({ id: '1' }),
+        update: vi.fn().mockResolvedValue({ id: '1' }),
+        delete: vi.fn().mockResolvedValue(true),
         withTransaction: vi.fn(),
+        getClient: vi.fn()
     };
 }
 

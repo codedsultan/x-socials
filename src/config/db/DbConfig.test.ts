@@ -261,15 +261,18 @@ describe("DbConfig", () => {
       const [sqlite] = DbConfig.buildAll();
 
       expect(sqlite?.filename).toBe(":memory:");
+      // expect(sqlite?.driver).toBe("sqlite3");
       expect(sqlite?.driver).toBe("better-sqlite3");
     });
 
     it("uses SQLITE_CLIENT when provided", () => {
       process.env["SQLITE_FILENAME"] = "./data.db";
-      process.env["SQLITE_CLIENT"] = "sqlite3";
+      // process.env["SQLITE_CLIENT"] = "sqlite3";
+      process.env["SQLITE_CLIENT"] = "better-sqlite3";
 
       const [sqlite] = DbConfig.buildAll();
-      expect(sqlite?.driver).toBe("sqlite3");
+      // expect(sqlite?.driver).toBe("sqlite3");
+      expect(sqlite?.driver).toBe("better-sqlite3");
     });
 
     it("uses SQLITE_CONNECTION_NAME when provided", () => {

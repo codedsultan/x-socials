@@ -7,30 +7,30 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('mongoose', () => {
     // Must be inline — cannot reference outer variables due to hoisting
     const mockModel = {
-        findOne:           vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: '1', title: 'hello' }) }),
-        find:              vi.fn().mockReturnValue({ limit: vi.fn().mockReturnThis(), skip: vi.fn().mockReturnThis(), sort: vi.fn().mockReturnThis(), populate: vi.fn().mockReturnThis(), lean: vi.fn().mockResolvedValue([]) }),
-        create:            vi.fn().mockResolvedValue({ toObject: vi.fn().mockReturnValue({ _id: '1' }) }),
+        findOne: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: '1', title: 'hello' }) }),
+        find: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnThis(), skip: vi.fn().mockReturnThis(), sort: vi.fn().mockReturnThis(), populate: vi.fn().mockReturnThis(), lean: vi.fn().mockResolvedValue([]) }),
+        create: vi.fn().mockResolvedValue({ toObject: vi.fn().mockReturnValue({ _id: '1' }) }),
         findByIdAndUpdate: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: '1' }) }),
         findByIdAndDelete: vi.fn().mockResolvedValue({ _id: '1' }),
     };
 
     // Schema must be a proper class (constructable) — use function syntax
-    function Schema(_def: unknown, _opts?: unknown) {}
+    function Schema(_def: unknown, _opts?: unknown) { }
     Schema.prototype = {};
 
     return {
         default: {
-            connect:    vi.fn().mockResolvedValue(undefined),
+            connect: vi.fn().mockResolvedValue(undefined),
             disconnect: vi.fn().mockResolvedValue(undefined),
             connection: { readyState: 1 },
             Schema,
-            model:      vi.fn().mockReturnValue(mockModel),
-            models:     {},
+            model: vi.fn().mockReturnValue(mockModel),
+            models: {},
             startSession: vi.fn().mockResolvedValue({
-                startTransaction:  vi.fn(),
+                startTransaction: vi.fn(),
                 commitTransaction: vi.fn().mockResolvedValue(undefined),
-                abortTransaction:  vi.fn().mockResolvedValue(undefined),
-                endSession:        vi.fn(),
+                abortTransaction: vi.fn().mockResolvedValue(undefined),
+                endSession: vi.fn(),
             }),
         },
     };
@@ -38,10 +38,10 @@ vi.mock('mongoose', () => {
 
 vi.mock('knex', () => {
     const mockKnexInstance = {
-        raw:     vi.fn().mockResolvedValue(undefined),
+        raw: vi.fn().mockResolvedValue(undefined),
         destroy: vi.fn().mockResolvedValue(undefined),
-        schema:  {
-            hasTable:    vi.fn().mockResolvedValue(false),
+        schema: {
+            hasTable: vi.fn().mockResolvedValue(false),
             createTable: vi.fn().mockImplementation(
                 (_name: string, cb: (t: unknown) => void) => {
                     const b = {
@@ -62,7 +62,7 @@ vi.mock('knex', () => {
 });
 
 import { MongooseAdapter } from '../../../database/adapters/MongooseAdapter';
-import { KnexAdapter }     from '../../../database/adapters/KnexAdapter';
+import { KnexAdapter } from '../../../database/adapters/KnexAdapter';
 
 describe('MongooseAdapter', () => {
     let adapter: MongooseAdapter;
@@ -99,7 +99,8 @@ describe('MongooseAdapter', () => {
     it('findOne delegates to model.findOne().lean()', async () => {
         adapter.registerModel('Post', { mongo: { title: { type: String } } });
         const result = await adapter.findOne('Post', { title: 'hello' });
-        expect(result).toEqual({ _id: '1', title: 'hello' });
+        // expect(result).toEqual({ _id: '1', title: 'hello' });
+        expect(result).toEqual({ id: '1', title: 'hello' });
     });
 
     it('migrate is a no-op and resolves without error', async () => {

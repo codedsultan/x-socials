@@ -33,6 +33,7 @@ export interface IEnvConfig {
   MONGO_SOCKET_TIMEOUT_MS?: string;
   MONGO_SERVER_SELECTION_TIMEOUT_MS?: string;
 
+  SQL_DB?: string;
   // PostgreSQL
   PG_HOST?: string;
   PG_PORT?: string;

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import swaggerJsdoc from "swagger-jsdoc";
 import SwaggerDocs from "./swagger";
+import ConfigService from "../config/config.service";
 
 // Define the OpenAPI spec type for testing
 interface OpenAPISpec {
@@ -31,36 +32,59 @@ vi.mock("swagger-jsdoc", () => ({
     }))
 }));
 
-// Mock env - create mock functions inside the factory
-vi.mock("./env", () => {
+// Mock ConfigService
+vi.mock("../config/config.service", () => {
     // Create mock functions that can be accessed
     const mockIsSwaggerEnabled = vi.fn(() => true);
     const mockIsProduction = vi.fn(() => false);
     const mockIsDevelopment = vi.fn(() => true);
     const mockIsStaging = vi.fn(() => false);
-    const mockGetConfig = vi.fn(() => ({
+    const mockGetServerConfig = vi.fn(() => ({
         PORT: 5000,
         NODE_ENV: "development",
         ENABLE_SWAGGER: true,
+        API_PREFIX: "/api",
     }));
     const mockGetApiUrl = vi.fn(() => "http://localhost:5000");
+    const mockGetPort = vi.fn(() => 5000);
+    const mockGetNodeEnv = vi.fn(() => "development");
+    const mockGetFullConfig = vi.fn(() => ({
+        server: {
+            PORT: 5000,
+            NODE_ENV: "development",
+            ENABLE_SWAGGER: true,
+            API_PREFIX: "/api",
+        },
+        databases: {}
+    }));
 
     return {
         default: {
-            getConfig: mockGetConfig,
+            getInstance: vi.fn(() => ({
+                isSwaggerEnabled: mockIsSwaggerEnabled,
+                isProduction: mockIsProduction,
+                isDevelopment: mockIsDevelopment,
+                isStaging: mockIsStaging,
+                getServerConfig: mockGetServerConfig,
+                getApiUrl: mockGetApiUrl,
+                getPort: mockGetPort,
+                getNodeEnv: mockGetNodeEnv,
+                getFullConfig: mockGetFullConfig,
+            })),
+            // Static methods
+            isSwaggerEnabled: mockIsSwaggerEnabled,
             isProduction: mockIsProduction,
             isDevelopment: mockIsDevelopment,
             isStaging: mockIsStaging,
+            getServerConfig: mockGetServerConfig,
             getApiUrl: mockGetApiUrl,
-            isSwaggerEnabled: mockIsSwaggerEnabled,
+            getPort: mockGetPort,
+            getNodeEnv: mockGetNodeEnv,
+            getFullConfig: mockGetFullConfig,
         },
-        // Export the mocks so tests can access them
         __esModule: true,
     };
 });
-
-// Import the mocked module to get references to the mock functions
-import EnvConfig from "./env";
 
 describe("SwaggerDocs", () => {
     beforeEach(() => {
@@ -72,6 +96,22 @@ describe("SwaggerDocs", () => {
 
         // Reset the static swaggerSpecs
         (SwaggerDocs as any).swaggerSpecs = null;
+
+        // Reset ConfigService mocks to default values
+        const configService = ConfigService as any;
+        configService.isSwaggerEnabled.mockReturnValue(true);
+        configService.isProduction.mockReturnValue(false);
+        configService.isDevelopment.mockReturnValue(true);
+        configService.isStaging.mockReturnValue(false);
+        configService.getServerConfig.mockReturnValue({
+            PORT: 5000,
+            NODE_ENV: "development",
+            ENABLE_SWAGGER: true,
+            API_PREFIX: "/api",
+        });
+        configService.getApiUrl.mockReturnValue("http://localhost:5000");
+        configService.getPort.mockReturnValue(5000);
+        configService.getNodeEnv.mockReturnValue("development");
     });
 
     afterEach(() => {
@@ -81,9 +121,10 @@ describe("SwaggerDocs", () => {
     describe("init", () => {
         it("should initialize swagger in development", () => {
             // Set up mocks for this test
-            (EnvConfig.isSwaggerEnabled as any).mockReturnValue(true);
-            (EnvConfig.isProduction as any).mockReturnValue(false);
-            (EnvConfig.isDevelopment as any).mockReturnValue(true);
+            const configService = ConfigService as any;
+            configService.isSwaggerEnabled.mockReturnValue(true);
+            configService.isProduction.mockReturnValue(false);
+            configService.isDevelopment.mockReturnValue(true);
 
             const mockApp = {
                 use: vi.fn(),
@@ -93,16 +134,17 @@ describe("SwaggerDocs", () => {
             SwaggerDocs.init(mockApp);
 
             // Check that swagger was initialized
-            expect(EnvConfig.isSwaggerEnabled).toHaveBeenCalled();
+            expect(configService.isSwaggerEnabled).toHaveBeenCalled();
             expect(mockApp.use).toHaveBeenCalled();
             expect(mockApp.use.mock.calls[0][0]).toBe("/api-docs");
             expect(mockApp.get).toHaveBeenCalledWith("/api-docs.json", expect.any(Function));
         });
 
         it("should not initialize swagger in production", () => {
-            (EnvConfig.isProduction as any).mockReturnValue(true);
-            (EnvConfig.isDevelopment as any).mockReturnValue(false);
-            (EnvConfig.isSwaggerEnabled as any).mockReturnValue(false);
+            const configService = ConfigService as any;
+            configService.isProduction.mockReturnValue(true);
+            configService.isDevelopment.mockReturnValue(false);
+            configService.isSwaggerEnabled.mockReturnValue(false);
 
             const mockApp = {
                 use: vi.fn(),
@@ -112,7 +154,7 @@ describe("SwaggerDocs", () => {
             SwaggerDocs.init(mockApp);
 
             // Verify isSwaggerEnabled was called
-            expect(EnvConfig.isSwaggerEnabled).toHaveBeenCalled();
+            expect(configService.isSwaggerEnabled).toHaveBeenCalled();
 
             // Swagger should not be initialized
             const apiDocsCalls = mockApp.use.mock.calls.filter(
@@ -122,9 +164,10 @@ describe("SwaggerDocs", () => {
         });
 
         it("should force enable swagger in production with ENABLE_SWAGGER flag", () => {
-            (EnvConfig.isProduction as any).mockReturnValue(true);
-            (EnvConfig.isDevelopment as any).mockReturnValue(false);
-            (EnvConfig.isSwaggerEnabled as any).mockReturnValue(true);
+            const configService = ConfigService as any;
+            configService.isProduction.mockReturnValue(true);
+            configService.isDevelopment.mockReturnValue(false);
+            configService.isSwaggerEnabled.mockReturnValue(true);
 
             // Set environment variable
             process.env.ENABLE_SWAGGER = "true";
@@ -137,8 +180,8 @@ describe("SwaggerDocs", () => {
             SwaggerDocs.init(mockApp);
 
             // Verify isSwaggerEnabled was called and returned true
-            expect(EnvConfig.isSwaggerEnabled).toHaveBeenCalled();
-            expect((EnvConfig.isSwaggerEnabled as any).mock.results[0]?.value).toBe(true);
+            expect(configService.isSwaggerEnabled).toHaveBeenCalled();
+            expect(configService.isSwaggerEnabled.mock.results[0]?.value).toBe(true);
 
             // Swagger should be initialized
             expect(mockApp.use).toHaveBeenCalled();
@@ -146,9 +189,10 @@ describe("SwaggerDocs", () => {
         });
 
         it("should redirect to external docs in production when enabled", () => {
-            (EnvConfig.isProduction as any).mockReturnValue(true);
-            (EnvConfig.isDevelopment as any).mockReturnValue(false);
-            (EnvConfig.isSwaggerEnabled as any).mockReturnValue(false);
+            const configService = ConfigService as any;
+            configService.isProduction.mockReturnValue(true);
+            configService.isDevelopment.mockReturnValue(false);
+            configService.isSwaggerEnabled.mockReturnValue(false);
             process.env.ENABLE_SWAGGER = "false";
             process.env.EXTERNAL_DOCS_URL = "https://docs.example.com";
 
@@ -160,7 +204,7 @@ describe("SwaggerDocs", () => {
             SwaggerDocs.init(mockApp);
 
             // Verify isSwaggerEnabled was called
-            expect(EnvConfig.isSwaggerEnabled).toHaveBeenCalled();
+            expect(configService.isSwaggerEnabled).toHaveBeenCalled();
 
             // Should set up redirect for /api-docs
             expect(mockApp.get).toHaveBeenCalledWith("/api-docs", expect.any(Function));

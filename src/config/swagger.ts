@@ -2,29 +2,31 @@ import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { Application } from "express";
 import Logger from "../logger";
-import EnvConfig from "./env";
+import ConfigService from "./config.service";
 
 class SwaggerDocs {
     private static swaggerSpecs: object | null = null;
 
     private static getOptions() {
-        const config = EnvConfig.getConfig();
-        const isProduction = EnvConfig.isProduction();
-        const isStaging = EnvConfig.isStaging();
-        const serverUrl = EnvConfig.getApiUrl();
+        const configService = ConfigService;
+        // const config = configService.getFullConfig();
+        const isProduction = configService.isProduction();
+        const isStaging = configService.isStaging();
+        const serverUrl = configService.getApiUrl();
+        const nodeEnv = configService.getNodeEnv();
 
         // Different server configurations per environment
         const servers = [
             {
                 url: serverUrl,
-                description: `${config.NODE_ENV.toUpperCase()} server`,
+                description: `${nodeEnv.toUpperCase()} server`,
             },
         ];
 
         // Add localhost for development and staging (but not production)
         if (!isProduction) {
             servers.unshift({
-                url: `http://localhost:${config.PORT}`,
+                url: `http://localhost:${configService.getPort()}`,
                 description: "Local development server",
             });
         }
@@ -93,9 +95,11 @@ class SwaggerDocs {
      * Initialize Swagger Docs
      */
     public static init(_express: Application): Application {
-        const config = EnvConfig.getConfig();
+        const configService = ConfigService;
+        // const config = configService.getFullConfig();
+        const nodeEnv = configService.getNodeEnv();
 
-        const enableSwagger = EnvConfig.isSwaggerEnabled();
+        const enableSwagger = configService.isSwaggerEnabled();
 
         if (enableSwagger) {
             const swaggerSpecs = this.getSwaggerSpecs();
@@ -107,12 +111,12 @@ class SwaggerDocs {
                 swaggerUi.setup(swaggerSpecs, {
                     explorer: true,
                     customCss: '.swagger-ui .topbar { display: none }',
-                    customSiteTitle: `Social Media API - ${config.NODE_ENV.toUpperCase()}`,
+                    customSiteTitle: `Social Media API - ${nodeEnv.toUpperCase()}`,
                     swaggerOptions: {
                         persistAuthorization: true,
                         displayRequestDuration: true,
                         filter: true,
-                        tryItOutEnabled: EnvConfig.isDevelopment(), // Enable try-it-out only in development
+                        tryItOutEnabled: configService.isDevelopment(), // Enable try-it-out only in development
                     },
                 })
             );
@@ -124,18 +128,18 @@ class SwaggerDocs {
             });
 
             // Add environment badge to swagger UI
-            if (EnvConfig.isStaging()) {
+            if (configService.isStaging()) {
                 Logger.getInstance().warn("Swagger :: Running in STAGING mode with documentation enabled");
-            } else if (EnvConfig.isProduction()) {
+            } else if (configService.isProduction()) {
                 Logger.getInstance().warn("Swagger :: Running in PRODUCTION mode with documentation enabled (override)");
             } else {
-                Logger.getInstance().info(`Swagger :: Initialized at /api-docs (${config.NODE_ENV} mode)`);
+                Logger.getInstance().info(`Swagger :: Initialized at /api-docs (${nodeEnv} mode)`);
             }
         } else {
-            if (EnvConfig.isProduction()) {
+            if (configService.isProduction()) {
                 Logger.getInstance().info("Swagger :: Disabled in production");
             } else {
-                Logger.getInstance().info(`Swagger :: Disabled via environment configuration (${config.NODE_ENV} mode)`);
+                Logger.getInstance().info(`Swagger :: Disabled via environment configuration (${nodeEnv} mode)`);
             }
 
             // Optionally redirect to external docs 
@@ -151,13 +155,13 @@ class SwaggerDocs {
                 _express.get("/api-docs", (_req, res) => {
                     res.status(404).json({
                         error: "Swagger documentation is disabled",
-                        environment: config.NODE_ENV
+                        environment: nodeEnv
                     });
                 });
                 _express.get("/api-docs.json", (_req, res) => {
                     res.status(404).json({
                         error: "Swagger documentation is disabled",
-                        environment: config.NODE_ENV
+                        environment: nodeEnv
                     });
                 });
             }

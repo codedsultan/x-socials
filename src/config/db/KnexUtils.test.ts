@@ -147,57 +147,57 @@ describe("KnexUtils", () => {
       });
     });
 
-    describe("SQLite — sqlite3", () => {
-      let utils: KnexUtils;
-      let knex: ReturnType<typeof makeKnexStub>;
+    // describe("SQLite — sqlite3", () => {
+    //   let utils: KnexUtils;
+    //   let knex: ReturnType<typeof makeKnexStub>;
 
-      beforeEach(() => {
-        knex = makeKnexStub("sqlite3");
-        utils = new KnexUtils(knex);
-      });
+    //   beforeEach(() => {
+    //     knex = makeKnexStub("sqlite3");
+    //     utils = new KnexUtils(knex);
+    //   });
 
-      it("calls knex.raw with strftime pattern", () => {
-        utils.truncatedTimestamp("created_at", "hour");
-        const [sql] = knex.raw.mock.calls[0];
-        expect(sql).toContain("strftime");
-      });
+    //   it("calls knex.raw with strftime pattern", () => {
+    //     utils.truncatedTimestamp("created_at", "hour");
+    //     const [sql] = knex.raw.mock.calls[0];
+    //     expect(sql).toContain("strftime");
+    //   });
 
-      it("passes the format string as first binding", () => {
-        utils.truncatedTimestamp("ts", "hour");
-        const [, bindings] = knex.raw.mock.calls[0];
-        expect(bindings[0]).toBe("%Y-%m-%d %H:00:00");
-      });
+    //   it("passes the format string as first binding", () => {
+    //     utils.truncatedTimestamp("ts", "hour");
+    //     const [, bindings] = knex.raw.mock.calls[0];
+    //     expect(bindings[0]).toBe("%Y-%m-%d %H:00:00");
+    //   });
 
-      it("passes column name as second binding", () => {
-        utils.truncatedTimestamp("ts", "day");
-        const [, bindings] = knex.raw.mock.calls[0];
-        expect(bindings[1]).toBe("ts");
-      });
+    //   it("passes column name as second binding", () => {
+    //     utils.truncatedTimestamp("ts", "day");
+    //     const [, bindings] = knex.raw.mock.calls[0];
+    //     expect(bindings[1]).toBe("ts");
+    //   });
 
-      it("uses hour format '%Y-%m-%d %H:00:00'", () => {
-        utils.truncatedTimestamp("ts", "hour");
-        const [, bindings] = knex.raw.mock.calls[0];
-        expect(bindings[0]).toBe("%Y-%m-%d %H:00:00");
-      });
+    //   it("uses hour format '%Y-%m-%d %H:00:00'", () => {
+    //     utils.truncatedTimestamp("ts", "hour");
+    //     const [, bindings] = knex.raw.mock.calls[0];
+    //     expect(bindings[0]).toBe("%Y-%m-%d %H:00:00");
+    //   });
 
-      it("uses minute format '%Y-%m-%d %H:%M:00'", () => {
-        utils.truncatedTimestamp("ts", "minute");
-        const [, bindings] = knex.raw.mock.calls[0];
-        expect(bindings[0]).toBe("%Y-%m-%d %H:%M:00");
-      });
+    //   it("uses minute format '%Y-%m-%d %H:%M:00'", () => {
+    //     utils.truncatedTimestamp("ts", "minute");
+    //     const [, bindings] = knex.raw.mock.calls[0];
+    //     expect(bindings[0]).toBe("%Y-%m-%d %H:%M:00");
+    //   });
 
-      it("uses second format '%Y-%m-%d %H:%M:%S'", () => {
-        utils.truncatedTimestamp("ts", "second");
-        const [, bindings] = knex.raw.mock.calls[0];
-        expect(bindings[0]).toBe("%Y-%m-%d %H:%M:%S");
-      });
+    //   it("uses second format '%Y-%m-%d %H:%M:%S'", () => {
+    //     utils.truncatedTimestamp("ts", "second");
+    //     const [, bindings] = knex.raw.mock.calls[0];
+    //     expect(bindings[0]).toBe("%Y-%m-%d %H:%M:%S");
+    //   });
 
-      it("uses day format '%Y-%m-%d 00:00:00'", () => {
-        utils.truncatedTimestamp("ts", "day");
-        const [, bindings] = knex.raw.mock.calls[0];
-        expect(bindings[0]).toBe("%Y-%m-%d 00:00:00");
-      });
-    });
+    //   it("uses day format '%Y-%m-%d 00:00:00'", () => {
+    //     utils.truncatedTimestamp("ts", "day");
+    //     const [, bindings] = knex.raw.mock.calls[0];
+    //     expect(bindings[0]).toBe("%Y-%m-%d 00:00:00");
+    //   });
+    // });
 
     describe("SQLite — better-sqlite3", () => {
       it("uses the same strftime pattern as sqlite3", () => {

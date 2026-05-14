@@ -2,9 +2,9 @@ import type { DbType, ModelName } from '../../interfaces/core/db-types';
 import type { IDatabaseAdapter } from '../../interfaces/db/IAdapter';
 import type { IDatabaseConfig } from '../../interfaces/core/config';
 import type { ModelSchemaEntry } from '../../models/schemas';
-import { DbRegistry }      from './DbRegistry';
+import { DbRegistry } from './DbRegistry';
 import { MongooseAdapter } from '../adapters/MongooseAdapter';
-import { KnexAdapter }     from '../adapters/KnexAdapter';
+import { KnexAdapter } from '../adapters/KnexAdapter';
 
 /**
  * DbResolver owns the live adapter instances and wires them up.
@@ -17,14 +17,25 @@ export class DbResolver {
 
     constructor(
         configs: IDatabaseConfig,
-        private readonly registry: DbRegistry
+        private readonly registry: DbRegistry,
+        options?: { skipMigrations?: boolean }
     ) {
-        if (configs.mongodb)  this.adapters.set('mongodb',  new MongooseAdapter(configs.mongodb));
-        if (configs.postgres) this.adapters.set('postgres', new KnexAdapter(this.buildKnexConfig('postgres', configs.postgres)));
-        if (configs.mysql)    this.adapters.set('mysql',    new KnexAdapter(this.buildKnexConfig('mysql', configs.mysql)));
-        if (configs.sqlite)   this.adapters.set('sqlite',   new KnexAdapter(this.buildKnexConfig('sqlite', configs.sqlite)));
-    }
+        const migrationOptions = { skipMigrations: options?.skipMigrations ?? false };
 
+        if (configs.mongodb) this.adapters.set('mongodb', new MongooseAdapter(configs.mongodb));
+        if (configs.postgres) this.adapters.set('postgres', new KnexAdapter(
+            this.buildKnexConfig('postgres', configs.postgres),
+            migrationOptions
+        ));
+        if (configs.mysql) this.adapters.set('mysql', new KnexAdapter(
+            this.buildKnexConfig('mysql', configs.mysql),
+            migrationOptions
+        ));
+        if (configs.sqlite) this.adapters.set('sqlite', new KnexAdapter(
+            this.buildKnexConfig('sqlite', configs.sqlite),
+            migrationOptions
+        ));
+    }
     // ── lifecycle ──────────────────────────────────────────────────────────
 
     async connectAll(): Promise<void> {
@@ -76,6 +87,8 @@ export class DbResolver {
         return [...this.adapters.keys()];
     }
 
+
+
     async healthCheck(): Promise<Record<string, boolean>> {
         const results: Record<string, boolean> = {};
         for (const [dbType, adapter] of this.adapters) {
@@ -93,7 +106,7 @@ export class DbResolver {
         if ('filename' in cfg) {
             // SQLite
             return {
-                client: cfg.client ?? 'better-sqlite3',
+                client: cfg.client ?? 'sqlite3',
                 connection: { filename: cfg.filename },
                 useNullAsDefault: true,
                 pool: { min: cfg.poolMin ?? 1, max: cfg.poolMax ?? 1 },
@@ -104,12 +117,12 @@ export class DbResolver {
         return {
             client: c.client ?? (_type === 'postgres' ? 'pg' : 'mysql2'),
             connection: {
-                host:     c.host,
-                port:     c.port,
+                host: c.host,
+                port: c.port,
                 database: c.database,
-                user:     c.user,
+                user: c.user,
                 password: c.password,
-                ssl:      'ssl' in c ? (c.ssl ? { rejectUnauthorized: false } : false) : undefined,
+                ssl: 'ssl' in c ? (c.ssl ? { rejectUnauthorized: false } : false) : undefined,
             },
             pool: { min: c.poolMin ?? 2, max: c.poolMax ?? 10 },
         };
