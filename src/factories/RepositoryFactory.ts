@@ -7,14 +7,8 @@ import { LikeRepository }   from '../repositories/LikeRepository';
 import { UserRepository }   from '../repositories/UserRepository';
 import { OtpRepository }    from '../repositories/OtpRepository';
 import { TokenRepository }  from '../repositories/TokenRepository';
+import { FollowRepository } from '../repositories/FollowRepository';
 
-/**
- * RepositoryFactory builds and caches repository instances.
- *
- * It is a plain class — no static getInstance(), no global state.
- * Construct once in the composition root and inject wherever needed.
- * Model schemas are registered by DbResolver before this is constructed.
- */
 export class RepositoryFactory {
     private readonly cache: Map<string, IRepository> = new Map();
 
@@ -46,6 +40,9 @@ export class RepositoryFactory {
                 break;
             case 'Token':
                 repo = new TokenRepository(adapter, modelName);
+                break;
+            case 'Follow':
+                repo = new FollowRepository(adapter, modelName);
                 break;
             default:
                 repo = new BaseRepository<T>(adapter, modelName);
