@@ -11,7 +11,6 @@ class SwaggerDocs {
     private static getOptions() {
         const configService = ConfigService;
         const isProduction = configService.isProduction();
-        const isStaging = configService.isStaging();
         const serverUrl = configService.getApiUrl();
         const nodeEnv = configService.getNodeEnv();
 

@@ -16,6 +16,7 @@ function makeAdapter(): IDatabaseAdapter {
         create: vi.fn().mockResolvedValue({ id: '1' }),
         update: vi.fn().mockResolvedValue({ id: '1' }),
         delete: vi.fn().mockResolvedValue(true),
+        count: vi.fn().mockResolvedValue(0),
         withTransaction: vi.fn(),
         getClient: vi.fn()
     };
