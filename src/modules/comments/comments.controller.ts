@@ -11,8 +11,12 @@ class CommentsController {
 
   listForPost = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const comments = await this.service(req).listForPost(req.params['postId'] as string);
-      sendSuccess(res, { comments });
+      const { after, before, limit = 20 } = req.query as any;
+      const result = await this.service(req).listForPost(
+        req.params['postId'] as string,
+        { after, before, limit: Number(limit) }
+      );
+      sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
@@ -20,8 +24,12 @@ class CommentsController {
 
   getReplies = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const replies = await this.service(req).getReplies(req.params['id'] as string);
-      sendSuccess(res, { replies });
+      const { after, before, limit = 20 } = req.query as any;
+      const result = await this.service(req).getReplies(
+        req.params['id'] as string,
+        { after, before, limit: Number(limit) }
+      );
+      sendSuccess(res, result);
     } catch (err) {
       next(err);
     }

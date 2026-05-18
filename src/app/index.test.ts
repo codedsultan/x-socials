@@ -121,6 +121,7 @@ function makeFakeDb(initialized = true): import('../database/initializer').Datab
             factory: {
                 getRepository: vi.fn().mockReturnValue({
                     findMany: vi.fn().mockResolvedValue([{ id: '1', email: 'a@b.com' }]),
+                    count: vi.fn().mockResolvedValue(1),
                 }),
             },
         }),
@@ -192,9 +193,9 @@ describe('ExpressApp', () => {
         it('returns users list with success envelope when db is ready', async () => {
             const res = await request(app.express).get('/api/users');
             expect(res.status).toBe(200);
-            // New module router wraps responses in { success, data: { users } }
+            // Module router returns PagedResult: { success, data: { items, meta } }
             expect(res.body.success).toBe(true);
-            expect(Array.isArray(res.body.data.users)).toBe(true);
+            expect(Array.isArray(res.body.data.items)).toBe(true);
         });
 
         it('returns 404 for unknown sub-paths (route moved to module router)', async () => {

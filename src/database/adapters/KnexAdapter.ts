@@ -20,6 +20,14 @@ export interface KnexAdapterOptions {
  */
 const NO_RETURNING_CLIENTS = new Set(['mysql', 'mysql2', 'sqlite3', 'better-sqlite3']);
 
+/**
+ * Models whose tables deliberately have no `updated_at` column.
+ * These are write-once records — no mutable state after insert.
+ * KnexAdapter.create() skips the updated_at injection for these models.
+ * KnexAdapter.update() (called on these models) also skips it.
+ */
+const NO_UPDATED_AT_MODELS = new Set(['Token', 'Otp', 'Follow']);
+
 export class KnexAdapter implements IDatabaseAdapter {
     private readonly db: Knex;
     private readonly tableDefs: Map<string, TableDef> = new Map();
@@ -227,6 +235,18 @@ export class KnexAdapter implements IDatabaseAdapter {
         options?: FindManyOptions
     ): Promise<unknown[]> {
         let query = this.db(this.getTableName(model)).where(this.toSnakeCase(filter));
+
+        // Keyset / cursor support — WHERE id > :after  or  WHERE id < :before
+        const cursorCol = options?.cursorField
+            ? options.cursorField.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`)
+            : 'id';
+
+        if (options?.after) {
+            query = query.where(cursorCol, '>', options.after);
+        } else if (options?.before) {
+            query = query.where(cursorCol, '<', options.before);
+        }
+
         if (options?.limit) query = query.limit(options.limit);
         if (options?.skip) query = query.offset(options.skip);
         if (options?.sort) {
@@ -236,6 +256,14 @@ export class KnexAdapter implements IDatabaseAdapter {
         }
         const rows = await query;
         return (rows as Record<string, unknown>[]).map(r => this.toCamelCase(r));
+    }
+
+    async count(model: string, filter: Record<string, unknown>): Promise<number> {
+        const row = await this.db(this.getTableName(model))
+            .where(this.toSnakeCase(filter))
+            .count('* as n')
+            .first();
+        return Number((row as any)?.n ?? 0);
     }
 
     /**
@@ -250,15 +278,18 @@ export class KnexAdapter implements IDatabaseAdapter {
     async create(model: string, data: Record<string, unknown>): Promise<unknown> {
         const table = this.getTableName(model);
         const now = new Date();
+        const hasUpdatedAt = !NO_UPDATED_AT_MODELS.has(model);
 
         // Always supply id (application-generated UUID v7) — removes dependency
         // on any database-level default which varies across PostgreSQL / MySQL / SQLite.
-        const payload = this.toSnakeCase({
+        const base: Record<string, unknown> = {
             id: generateSqlId(),
             created_at: now,
-            updated_at: now,
+            ...(hasUpdatedAt ? { updated_at: now } : {}),
             ...data,            // caller data wins — allows explicit id override in tests
-        });
+        };
+
+        const payload = this.toSnakeCase(base);
 
         if (this.needsPostInsertSelect) {
             // MySQL / SQLite: INSERT then SELECT
@@ -285,6 +316,7 @@ export class KnexAdapter implements IDatabaseAdapter {
      */
     async update(model: string, id: string, data: Record<string, unknown>): Promise<unknown> {
         const table = this.getTableName(model);
+        const hasUpdatedAt = !NO_UPDATED_AT_MODELS.has(model);
 
         // Separate raw increment directives from plain fields
         const incrementFields: Record<string, number> = {};
@@ -304,7 +336,10 @@ export class KnexAdapter implements IDatabaseAdapter {
 
         // Build the final update payload
         const payload: Record<string, unknown> = {
-            ...this.toSnakeCase({ ...plainFields, updated_at: new Date() }),
+            ...this.toSnakeCase({
+                ...plainFields,
+                ...(hasUpdatedAt ? { updated_at: new Date() } : {}),
+            }),
         };
 
         // Merge raw expressions for atomic counter increments

@@ -101,20 +101,36 @@ export class MongooseAdapter implements IDatabaseAdapter {
         filter: Record<string, unknown>,
         options?: FindManyOptions
     ): Promise<unknown[]> {
-        let query = this.getModel(model).find(filter);
-        if (options?.limit) query = query.limit(options.limit);
-        if (options?.skip) query = query.skip(options.skip);
-        if (options?.sort) query = query.sort(options.sort);
+        const queryFilter = { ...filter };
+
+        // Cursor support — compare on _id (ObjectId sorts chronologically)
+        // or a custom cursorField when specified.
+        if (options?.after || options?.before) {
+            const field = options.cursorField ?? '_id';
+            if (options.after) {
+                queryFilter[field] = { $gt: options.after };
+            } else if (options.before) {
+                queryFilter[field] = { $lt: options.before };
+            }
+        }
+
+        let query = this.getModel(model).find(queryFilter);
+        if (options?.limit)    query = query.limit(options.limit);
+        if (options?.skip)     query = query.skip(options.skip);
+        if (options?.sort)     query = query.sort(options.sort);
         if (options?.populate) query = query.populate(options.populate.join(' '));
 
         const docs = await query.lean();
 
-        // Convert _id to id for each document
         return docs.map(doc => ({
             ...doc,
             id: doc._id?.toString(),
-            _id: undefined
+            _id: undefined,
         }));
+    }
+
+    async count(model: string, filter: Record<string, unknown>): Promise<number> {
+        return this.getModel(model).countDocuments(filter);
     }
 
     async create(model: string, data: Record<string, unknown>): Promise<unknown> {

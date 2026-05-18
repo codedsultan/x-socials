@@ -11,9 +11,16 @@ class PostsController {
 
   list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { page, limit, tag, authorId } = req.query as any;
-      const posts = await this.service(req).listPosts({ page, limit, tag, authorId });
-      sendSuccess(res, { posts });
+      const { page, limit, tag, authorId, cursor } = req.query as any;
+      const result = await this.service(req).listPosts({
+        page: page ? Number(page) : 1,
+        limit: Number(limit ?? 20),
+        tag,
+        authorId,
+        cursor,
+      });
+      // result is a PagedResult — { items, meta }
+      sendSuccess(res, result);
     } catch (err) {
       next(err);
     }

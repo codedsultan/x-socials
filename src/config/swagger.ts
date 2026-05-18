@@ -3,13 +3,13 @@ import swaggerUi from "swagger-ui-express";
 import { Application } from "express";
 import Logger from "../logger";
 import ConfigService from "./config.service";
+import { components, paths } from "../swagger/docs";
 
 class SwaggerDocs {
     private static swaggerSpecs: object | null = null;
 
     private static getOptions() {
         const configService = ConfigService;
-        // const config = configService.getFullConfig();
         const isProduction = configService.isProduction();
         const isStaging = configService.isStaging();
         const serverUrl = configService.getApiUrl();
@@ -35,10 +35,34 @@ class SwaggerDocs {
             definition: {
                 openapi: "3.0.0",
                 info: {
-                    title: "Social Media API",
+                    title: "x-socials API",
                     version: "1.0.0",
-                    description: `API documentation for the Social Media application${isStaging ? " (STAGING ENVIRONMENT)" : ""
-                        }`,
+                    description: [
+                        '## x-socials — Social Media Platform API',
+                        '',
+                        '### Authentication',
+                        'All protected endpoints require a `Bearer <accessToken>` header.',
+                        'Obtain tokens from `POST /auth/login` or `POST /auth/register`.',
+                        '',
+                        '### Response envelope',
+                        'Every response uses a consistent shape:',
+                        '```json',
+                        '{ "success": true, "data": { ... }, "message": "optional" }',
+                        '{ "success": false, "error": "human-readable message" }',
+                        '```',
+                        '',
+                        '### Pagination',
+                        '| Strategy | Used by | Query params |',
+                        '|---|---|---|',
+                        '| Offset | Users list, post search | `?page=1&limit=20` |',
+                        '| Cursor | Feed, post timeline | `?cursor=<token>&limit=20` |',
+                        '| Keyset | Comments, followers | `?after=<id>&limit=20` |',
+                        '',
+                        '### Seed credentials',
+                        'Password for all seed users: **SeedPass123**',
+                        '- alice@example.com (followed by everyone)',
+                        '- bob@example.com · charlie@example.com · diana@example.com',
+                    ].join('\n'),
                     license: {
                         name: "MIT",
                         url: "https://spdx.org/licenses/MIT.html",
@@ -50,37 +74,18 @@ class SwaggerDocs {
                     },
                 },
                 servers,
-                components: {
-                    securitySchemes: {
-                        bearerAuth: {
-                            type: "http",
-                            scheme: "bearer",
-                            bearerFormat: "JWT",
-                        },
-                    },
-                },
+                components,
+                paths,
                 tags: [
-                    {
-                        name: "Health",
-                        description: "Health check endpoints",
-                    },
-                    {
-                        name: "Users",
-                        description: "User management endpoints",
-                    },
+                    { name: 'Auth', description: 'Registration, login, token rotation' },
+                    { name: 'Users', description: 'Profiles, follow / unfollow, follower lists' },
+                    { name: 'Posts', description: 'Create, read, update, delete posts' },
+                    { name: 'Comments', description: 'Threaded comments and replies' },
+                    { name: 'Likes', description: 'Toggle likes on posts and comments' },
+                    { name: 'Feed', description: 'Personalised home feed and per-user timelines' },
                 ],
             },
-            apis: isProduction
-                ? [
-                    "./dist/routes/*.js",
-                    "./dist/models/*.js",
-                    "./dist/controllers/**/*.js",
-                ]
-                : [
-                    "./src/routes/*.ts",
-                    "./src/models/*.ts",
-                    "./src/controllers/**/*.ts",
-                ],
+            apis: [], // No need for JSDoc paths since we're using the object format
         };
     }
 
@@ -96,7 +101,6 @@ class SwaggerDocs {
      */
     public static init(_express: Application): Application {
         const configService = ConfigService;
-        // const config = configService.getFullConfig();
         const nodeEnv = configService.getNodeEnv();
 
         const enableSwagger = configService.isSwaggerEnabled();
@@ -111,12 +115,12 @@ class SwaggerDocs {
                 swaggerUi.setup(swaggerSpecs, {
                     explorer: true,
                     customCss: '.swagger-ui .topbar { display: none }',
-                    customSiteTitle: `Social Media API - ${nodeEnv.toUpperCase()}`,
+                    customSiteTitle: `x-socials API — ${nodeEnv.toUpperCase()}`,
                     swaggerOptions: {
                         persistAuthorization: true,
                         displayRequestDuration: true,
                         filter: true,
-                        tryItOutEnabled: configService.isDevelopment(), // Enable try-it-out only in development
+                        tryItOutEnabled: configService.isDevelopment(),
                     },
                 })
             );
@@ -127,7 +131,6 @@ class SwaggerDocs {
                 res.send(swaggerSpecs);
             });
 
-            // Add environment badge to swagger UI
             if (configService.isStaging()) {
                 Logger.getInstance().warn("Swagger :: Running in STAGING mode with documentation enabled");
             } else if (configService.isProduction()) {
@@ -142,7 +145,6 @@ class SwaggerDocs {
                 Logger.getInstance().info(`Swagger :: Disabled via environment configuration (${nodeEnv} mode)`);
             }
 
-            // Optionally redirect to external docs 
             if (process.env.EXTERNAL_DOCS_URL) {
                 _express.get("/api-docs", (_req, res) => {
                     res.redirect(process.env.EXTERNAL_DOCS_URL as string);
@@ -151,7 +153,6 @@ class SwaggerDocs {
                     res.redirect(`${process.env.EXTERNAL_DOCS_URL}/json`);
                 });
             } else {
-                // Return 404 when swagger is disabled
                 _express.get("/api-docs", (_req, res) => {
                     res.status(404).json({
                         error: "Swagger documentation is disabled",

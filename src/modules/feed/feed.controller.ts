@@ -10,10 +10,14 @@ class FeedController {
 
   home = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { page = 1, limit = 20 } = req.query as any;
+      const { cursor, limit = 20 } = req.query as any;
       const viewerUserId = (req as any).currentUser?.id;
-      const feed = await this.service(req).getHomeFeed({ page: Number(page), limit: Number(limit), viewerUserId });
-      sendSuccess(res, { feed });
+      const result = await this.service(req).getHomeFeed({
+        limit: Number(limit),
+        cursor,
+        viewerUserId,
+      });
+      sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
@@ -21,11 +25,13 @@ class FeedController {
 
   userFeed = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { page = 1, limit = 20 } = req.query as any;
+      const { cursor, limit = 20 } = req.query as any;
       const viewerUserId = (req as any).currentUser?.id;
-      const authorId = req.params['userId'] as string;
-      const feed = await this.service(req).getUserFeed(authorId, { page: Number(page), limit: Number(limit), viewerUserId });
-      sendSuccess(res, { feed });
+      const result = await this.service(req).getUserFeed(
+        req.params['userId'] as string,
+        { limit: Number(limit), cursor, viewerUserId }
+      );
+      sendSuccess(res, result);
     } catch (err) {
       next(err);
     }

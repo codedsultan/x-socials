@@ -18,13 +18,18 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
     update: vi.fn().mockResolvedValue(makeComment({ content: 'Updated' })),
     delete: vi.fn().mockResolvedValue(true),
     findOne: vi.fn().mockResolvedValue(null),
-    findMany: vi.fn().mockResolvedValue([]),
+    // listForPost calls findMany({ postId, parentId: null }, { limit: limit+1, ... })
+    findMany: vi.fn().mockResolvedValue([makeComment()]),
     exists: vi.fn().mockResolvedValue(false),
+    count: vi.fn().mockResolvedValue(1),
   };
   const postRepo = {
     findById: vi.fn().mockResolvedValue(postExists ? makePost() : null),
-    create: vi.fn(), update: vi.fn(), delete: vi.fn(), findMany: vi.fn(), findOne: vi.fn(),
-    exists: vi.fn(), findByAuthor: vi.fn(), findByTag: vi.fn(), incrementLikes: vi.fn(),
+    create: vi.fn(), update: vi.fn(), delete: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
+    findOne: vi.fn().mockResolvedValue(null),
+    exists: vi.fn(), findByAuthor: vi.fn(), findByTag: vi.fn(),
+    incrementLikes: vi.fn(), count: vi.fn().mockResolvedValue(0),
   };
   return {
     getRepository: vi.fn((name: string) => name === 'Comment' ? commentRepo : postRepo),
@@ -35,17 +40,18 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
 
 describe('CommentsService', () => {
   describe('listForPost', () => {
-    it('returns comments for a post', async () => {
+    it('returns paginated comments for a post', async () => {
       const factory = makeFactory();
       const service = new CommentsService(factory as any);
-      const comments = await service.listForPost('post-1');
-      expect(comments).toHaveLength(1);
+      const result = await service.listForPost('post-1', { limit: 20 });
+      expect(result.items).toHaveLength(1);
+      expect(result.meta).toBeDefined();
     });
 
     it('throws 404 when post does not exist', async () => {
       const factory = makeFactory({ postExists: false });
       const service = new CommentsService(factory as any);
-      await expect(service.listForPost('missing')).rejects.toMatchObject({ statusCode: 404 });
+      await expect(service.listForPost('missing', { limit: 20 })).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 

@@ -16,6 +16,7 @@ function makePostRepo(overrides: Record<string, any> = {}) {
     delete: vi.fn().mockResolvedValue(true),
     exists: vi.fn().mockResolvedValue(false),
     findOne: vi.fn().mockResolvedValue(null),
+    count: vi.fn().mockResolvedValue(1),
     incrementLikes: vi.fn().mockResolvedValue(makePost({ likesCount: 1 })),
     ...overrides,
   };
@@ -34,23 +35,24 @@ describe('PostsService', () => {
     it('returns all posts with default params', async () => {
       const factory = makeFactory();
       const service = new PostsService(factory as any);
-      const posts = await service.listPosts({ page: 1, limit: 20 });
-      expect(posts).toHaveLength(1);
-      expect(factory._postRepo.findMany).toHaveBeenCalledWith({}, { limit: 20, skip: 0 });
+      const result = await service.listPosts({ page: 1, limit: 20 });
+      expect(result.items).toHaveLength(1);
+      expect(result.meta).toBeDefined();
+      expect(factory._postRepo.findMany).toHaveBeenCalledWith({}, { limit: 20, skip: 0, sort: { createdAt: -1 } });
     });
 
     it('delegates to findByTag when tag is provided', async () => {
       const factory = makeFactory();
       const service = new PostsService(factory as any);
       await service.listPosts({ page: 1, limit: 10, tag: 'typescript' });
-      expect(factory._postRepo.findByTag).toHaveBeenCalledWith('typescript', { limit: 10, skip: 0 });
+      expect(factory._postRepo.findByTag).toHaveBeenCalledWith('typescript', { limit: 10, skip: 0, sort: { createdAt: -1 } });
     });
 
     it('delegates to findByAuthor when authorId is provided', async () => {
       const factory = makeFactory();
       const service = new PostsService(factory as any);
       await service.listPosts({ page: 2, limit: 5, authorId: 'user-1' });
-      expect(factory._postRepo.findByAuthor).toHaveBeenCalledWith('user-1', { limit: 5, skip: 5 });
+      expect(factory._postRepo.findByAuthor).toHaveBeenCalledWith('user-1', { limit: 5, skip: 5, sort: { createdAt: -1 } });
     });
   });
 

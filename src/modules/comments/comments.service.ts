@@ -1,8 +1,16 @@
-import type { RepositoryFactory } from '../../factories/RepositoryFactory';
-import type { CommentRepository } from '../../repositories/CommentRepository';
-import type { PostRepository } from '../../repositories/PostRepository';
-import { ApiError } from '../../shared/errors/ApiError';
+import type { RepositoryFactory }  from '../../factories/RepositoryFactory';
+import type { CommentRepository }  from '../../repositories/CommentRepository';
+import type { PostRepository }     from '../../repositories/PostRepository';
+import { ApiError }                from '../../shared/errors/ApiError';
+import { buildKeysetPage }         from '../../shared/helpers/paginate';
 import type { CreateCommentDto, UpdateCommentDto, CommentResponse } from './comments.types';
+import type { PagedResult } from '../../shared/helpers/paginate';
+
+export interface ListCommentsParams {
+  after?:  string;
+  before?: string;
+  limit:   number;
+}
 
 export class CommentsService {
   private get commentRepo(): CommentRepository {
@@ -15,14 +23,53 @@ export class CommentsService {
 
   constructor(private readonly repoFactory: RepositoryFactory) {}
 
-  async listForPost(postId: string): Promise<CommentResponse[]> {
+  /**
+   * Keyset-paginated top-level comments for a post, oldest first.
+   * Clients walk forward with ?after=<lastId>.
+   * Bi-directional navigation: ?before=<firstId> scrolls back up.
+   */
+  async listForPost(
+    postId: string,
+    params: ListCommentsParams
+  ): Promise<PagedResult<CommentResponse>> {
     const post = await this.postRepo.findById(postId);
     if (!post) throw ApiError.notFound('Post not found');
-    return (await this.commentRepo.findByPost(postId)) as CommentResponse[];
+
+    const { after, before, limit } = params;
+
+    const raw = await this.commentRepo.findMany(
+      { postId, parentId: null } as any,
+      {
+        limit:  limit + 1,
+        after,
+        before,
+        sort:   { id: 1 } as Record<string, 1 | -1>,
+      }
+    );
+
+    return buildKeysetPage(raw as CommentResponse[], limit, 'id');
   }
 
-  async getReplies(parentId: string): Promise<CommentResponse[]> {
-    return (await this.commentRepo.findReplies(parentId)) as CommentResponse[];
+  /**
+   * Keyset-paginated replies to a specific comment, oldest first.
+   */
+  async getReplies(
+    parentId: string,
+    params: ListCommentsParams
+  ): Promise<PagedResult<CommentResponse>> {
+    const { after, before, limit } = params;
+
+    const raw = await this.commentRepo.findMany(
+      { parentId } as any,
+      {
+        limit:  limit + 1,
+        after,
+        before,
+        sort:   { id: 1 } as Record<string, 1 | -1>,
+      }
+    );
+
+    return buildKeysetPage(raw as CommentResponse[], limit, 'id');
   }
 
   async createComment(actingUserId: string, postId: string, dto: CreateCommentDto): Promise<CommentResponse> {
@@ -32,16 +79,17 @@ export class CommentsService {
     if (dto.parentId) {
       const parent = await this.commentRepo.findById(dto.parentId);
       if (!parent) throw ApiError.notFound('Parent comment not found');
-      if ((parent as any).postId !== postId) throw ApiError.badRequest('Parent comment belongs to a different post');
+      if ((parent as any).postId !== postId) {
+        throw ApiError.badRequest('Parent comment belongs to a different post');
+      }
     }
 
-    const comment = await this.commentRepo.create({
+    return this.commentRepo.create({
       postId,
       authorId: actingUserId,
-      content: dto.content,
+      content:  dto.content,
       parentId: dto.parentId ?? null,
-    });
-    return comment as CommentResponse;
+    }) as Promise<CommentResponse>;
   }
 
   async updateComment(actingUserId: string, commentId: string, dto: UpdateCommentDto): Promise<CommentResponse> {

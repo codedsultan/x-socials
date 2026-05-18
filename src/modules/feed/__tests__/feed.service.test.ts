@@ -82,14 +82,11 @@ describe('FeedService', () => {
       const factory = makeFactory({ posts: [makePost(), makePost()] });
       const service = new FeedService(factory as any);
 
-      const feed = await service.getHomeFeed({ page: 1, limit: 20 });
+      const result = await service.getHomeFeed({ limit: 20 });
 
-      expect(feed).toHaveLength(2);
-      expect(factory._postRepo.findMany).toHaveBeenCalledWith(
-        {},
-        expect.objectContaining({ limit: 20, skip: 0 })
-      );
-      // No follow check for unauthenticated viewers
+      expect(result.items).toHaveLength(2);
+      expect(result.meta).toBeDefined();
+      expect(factory._postRepo.findMany).toHaveBeenCalled();
       expect(factory._followRepo.getFollowingIds).not.toHaveBeenCalled();
     });
 
@@ -97,7 +94,7 @@ describe('FeedService', () => {
       const factory = makeFactory({ followingIds: [] });
       const service = new FeedService(factory as any);
 
-      await service.getHomeFeed({ page: 1, limit: 20, viewerUserId: 'user-99' });
+      await service.getHomeFeed({ limit: 20, viewerUserId: 'user-99' });
 
       expect(factory._followRepo.getFollowingIds).toHaveBeenCalledWith('user-99');
       expect(factory._postRepo.findMany).toHaveBeenCalled();
@@ -112,38 +109,38 @@ describe('FeedService', () => {
       });
       const service = new FeedService(factory as any);
 
-      const feed = await service.getHomeFeed({ page: 1, limit: 20, viewerUserId: 'user-1' });
+      const result = await service.getHomeFeed({ limit: 20, viewerUserId: 'user-1' });
 
       expect(factory._postRepo.findByAuthor).toHaveBeenCalledWith('user-2', expect.any(Object));
       expect(factory._postRepo.findByAuthor).toHaveBeenCalledWith('user-3', expect.any(Object));
-      expect(feed.length).toBeGreaterThan(0);
+      expect(result.items.length).toBeGreaterThan(0);
     });
 
     it('attaches likedByMe: true when viewer has liked a post', async () => {
       const factory = makeFactory({ alreadyLiked: true });
       const service = new FeedService(factory as any);
 
-      const feed = await service.getHomeFeed({ page: 1, limit: 20, viewerUserId: 'user-1' });
+      const result = await service.getHomeFeed({ limit: 20, viewerUserId: 'user-1' });
 
-      expect(feed[0]!.likedByMe).toBe(true);
+      expect(result.items[0]!.likedByMe).toBe(true);
     });
 
     it('attaches likedByMe: false when viewer has not liked', async () => {
       const factory = makeFactory({ alreadyLiked: false });
       const service = new FeedService(factory as any);
 
-      const feed = await service.getHomeFeed({ page: 1, limit: 20, viewerUserId: 'user-1' });
+      const result = await service.getHomeFeed({ limit: 20, viewerUserId: 'user-1' });
 
-      expect(feed[0]!.likedByMe).toBe(false);
+      expect(result.items[0]!.likedByMe).toBe(false);
     });
 
     it('attaches likedByMe: false for all posts when unauthenticated', async () => {
       const factory = makeFactory({ posts: [makePost(), makePost()] });
       const service = new FeedService(factory as any);
 
-      const feed = await service.getHomeFeed({ page: 1, limit: 20 });
+      const result = await service.getHomeFeed({ limit: 20 });
 
-      expect(feed.every(f => f.likedByMe === false)).toBe(true);
+      expect(result.items.every(f => f.likedByMe === false)).toBe(true);
       expect(factory._likeRepo.hasUserLiked).not.toHaveBeenCalled();
     });
   });
@@ -153,23 +150,25 @@ describe('FeedService', () => {
       const factory = makeFactory({ posts: [makePost('user-5')] });
       const service = new FeedService(factory as any);
 
-      await service.getUserFeed('user-5', { page: 1, limit: 10 });
+      await service.getUserFeed('user-5', { limit: 10 });
 
       expect(factory._postRepo.findByAuthor).toHaveBeenCalledWith(
         'user-5',
-        expect.objectContaining({ limit: 10, skip: 0 })
+        expect.objectContaining({ limit: 11 })   // limit+1 for hasMore detection
       );
     });
 
-    it('applies correct pagination skip on page 2', async () => {
+    it('passes cursor through to findByAuthor', async () => {
+      const { encodeCursor } = await import('../../../shared/helpers/paginate');
+      const token = encodeCursor('some-id');
       const factory = makeFactory({ posts: [] });
       const service = new FeedService(factory as any);
 
-      await service.getUserFeed('user-5', { page: 3, limit: 10 });
+      await service.getUserFeed('user-5', { limit: 10, cursor: token });
 
       expect(factory._postRepo.findByAuthor).toHaveBeenCalledWith(
         'user-5',
-        expect.objectContaining({ skip: 20 })
+        expect.objectContaining({ after: 'some-id' })
       );
     });
   });

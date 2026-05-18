@@ -11,8 +11,9 @@ class UsersController {
 
   list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const users = await this.service(req).listUsers();
-      sendSuccess(res, { users });
+      const { page = 1, limit = 20 } = req.query as any;
+      const result = await this.service(req).listUsers({ page: Number(page), limit: Number(limit) });
+      sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
@@ -70,8 +71,12 @@ class UsersController {
 
   getFollowers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const users = await this.service(req).getFollowers(req.params['id'] as string);
-      sendSuccess(res, { users });
+      const { after, before, limit = 20 } = req.query as any;
+      const result = await this.service(req).getFollowers(
+        req.params['id'] as string,
+        { after, before, limit: Number(limit) }
+      );
+      sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
@@ -79,8 +84,12 @@ class UsersController {
 
   getFollowing = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const users = await this.service(req).getFollowing(req.params['id'] as string);
-      sendSuccess(res, { users });
+      const { after, before, limit = 20 } = req.query as any;
+      const result = await this.service(req).getFollowing(
+        req.params['id'] as string,
+        { after, before, limit: Number(limit) }
+      );
+      sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
