@@ -68,15 +68,15 @@ describe('PostRepository', () => {
         expect(adapter.findMany).toHaveBeenCalledWith('Post', { authorId: 'u1' }, { limit: 5 });
     });
 
-    it('findByTag calls findMany with tag filter', async () => {
+    it('findByTag calls findMany with scalar tag (Mongoose array-element match)', async () => {
         await repo.findByTag('typescript');
-        expect(adapter.findMany).toHaveBeenCalledWith('Post', { tags: ['typescript'] }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Post', { tags: 'typescript' }, undefined);
     });
 
-    it('incrementLikes calls adapter.update with $inc payload', async () => {
+    it('incrementLikes uses likesCountIncrement on SQL adapters (no models property)', async () => {
         await repo.incrementLikes('post-1');
         expect(adapter.update).toHaveBeenCalledWith(
-            'Post', 'post-1', { $inc: { likesCount: 1 } }
+            'Post', 'post-1', { likesCountIncrement: 1 }
         );
     });
 });

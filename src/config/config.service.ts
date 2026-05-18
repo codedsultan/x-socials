@@ -39,12 +39,13 @@ function getModelMapping(): ModelDbMapping {
     const sqlDb = getPrimarySqlDb();
 
     return {
-        User: sqlDb,
-        Otp: sqlDb,
-        Token: sqlDb,
-        Post: 'mongodb',
+        User:    sqlDb,
+        Otp:     sqlDb,
+        Token:   sqlDb,
+        Follow:  sqlDb,
+        Post:    'mongodb',
         Comment: 'mongodb',
-        Like: 'mongodb',
+        Like:    'mongodb',
     };
 }
 

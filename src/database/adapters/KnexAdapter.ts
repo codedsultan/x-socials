@@ -3,6 +3,7 @@ import knex, { type Knex } from 'knex';
 import path from 'path';
 import type { IDatabaseAdapter, FindManyOptions } from '../../interfaces/db/IAdapter';
 import type { ModelSchemaEntry } from '../../models/schemas';
+import { generateSqlId } from '../../utils/uuid';
 
 interface TableDef {
     tableName: string;
@@ -14,26 +15,35 @@ export interface KnexAdapterOptions {
     migrationsDir?: string;
 }
 
+/**
+ * SQL clients that do not support RETURNING — need a post-insert SELECT.
+ */
+const NO_RETURNING_CLIENTS = new Set(['mysql', 'mysql2', 'sqlite3', 'better-sqlite3']);
+
+/**
+ * Models whose tables deliberately have no `updated_at` column.
+ * These are write-once records — no mutable state after insert.
+ * KnexAdapter.create() skips the updated_at injection for these models.
+ * KnexAdapter.update() (called on these models) also skips it.
+ */
+const NO_UPDATED_AT_MODELS = new Set(['Token', 'Otp', 'Follow']);
+
 export class KnexAdapter implements IDatabaseAdapter {
     private readonly db: Knex;
     private readonly tableDefs: Map<string, TableDef> = new Map();
     private readonly skipMigrations: boolean;
     private readonly migrationsDir: string;
 
+    /** True when the underlying SQL client does not support RETURNING. */
+    private readonly needsPostInsertSelect: boolean;
+
     constructor(config: Knex.Config, options: KnexAdapterOptions = {}) {
         this.db = knex(config);
         this.skipMigrations = options.skipMigrations ?? false;
         this.migrationsDir = options.migrationsDir ?? path.join(__dirname, '../../../database/migrations');
-        // Update the migrations directory path
-        // this.migrationsDir = options.migrationsDir ?? (() => {
-        //     const isStagingOrProd =
-        //         process.env.NODE_ENV === 'production' ||
-        //         process.env.NODE_ENV === 'staging';
-        //     const basePath = isStagingOrProd
-        //         ? path.join(process.cwd(), 'dist/database/migrations')
-        //         : path.join(__dirname, '../../../database/migrations');
-        //     return basePath;
-        // })();
+        this.needsPostInsertSelect = NO_RETURNING_CLIENTS.has(
+            String(config.client ?? '')
+        );
     }
 
     async connect(): Promise<void> {
@@ -59,48 +69,6 @@ export class KnexAdapter implements IDatabaseAdapter {
         this.tableDefs.set(name, entry.sql as TableDef);
     }
 
-    /**
-     * Run pending migrations with environment-aware behavior
-     */
-    // async migrate(): Promise<void> {
-    //     // Skip if explicitly disabled
-    //     if (this.skipMigrations) {
-    //         console.log('KnexAdapter :: migrations skipped (skipMigrations=true)');
-    //         return;
-    //     }
-
-    //     const env = process.env['NODE_ENV'] ?? 'development';
-
-    //     // Check if we're in a migration CLI context
-    //     const isMigrationCommand = process.argv.some(arg =>
-    //         arg.includes('migrate') ||
-    //         arg.includes('run-migrations') ||
-    //         arg.includes('rollback')
-    //     );
-
-    //     // Skip auto-migrations when running migration CLI
-    //     if (isMigrationCommand) {
-    //         console.log('KnexAdapter :: skipping auto-migration (migration CLI detected)');
-    //         return;
-    //     }
-
-    //     // In production, prefer explicit migrations via CLI
-    //     if (env === 'production' && !process.env['AUTO_MIGRATE']) {
-    //         console.log('KnexAdapter :: auto-migration disabled in production. Set AUTO_MIGRATE=true to enable.');
-    //         return;
-    //     }
-
-    //     if (env === 'test') {
-    //         await this._devMigrate();
-    //     } else {
-    //         await this._knexMigrate();
-    //     }
-    // }
-
-    // src/database/adapters/KnexAdapter.ts (migration methods only)
-    /**
-     * Run pending migrations with environment-aware behavior
-     */
     async migrate(): Promise<void> {
         if (this.skipMigrations) {
             console.log('KnexAdapter :: migrations skipped (skipMigrations=true)');
@@ -119,7 +87,6 @@ export class KnexAdapter implements IDatabaseAdapter {
             return;
         }
 
-        // Single condition: migrate only if explicitly true, or (not false and in dev/test)
         const shouldMigrate = autoMigrate === 'true' ||
             (autoMigrate !== 'false' && (env === 'development' || env === 'test'));
 
@@ -134,9 +101,7 @@ export class KnexAdapter implements IDatabaseAdapter {
             await this._knexMigrate();
         }
     }
-    /**
-     * Run migrations programmatically
-     */
+
     async runMigrations(): Promise<string[]> {
         const [, migrations] = await this.db.migrate.latest({
             directory: this.migrationsDir,
@@ -146,9 +111,6 @@ export class KnexAdapter implements IDatabaseAdapter {
         return migrations;
     }
 
-    /**
-     * Rollback last migration batch
-     */
     async rollbackLastBatch(): Promise<string[]> {
         const [, migrations] = await this.db.migrate.rollback({
             directory: this.migrationsDir,
@@ -157,20 +119,14 @@ export class KnexAdapter implements IDatabaseAdapter {
         return migrations;
     }
 
-    /**
-     * Rollback all migrations
-     */
     async rollbackAll(): Promise<string[]> {
         const [, migrations] = await this.db.migrate.rollback({
             directory: this.migrationsDir,
             tableName: 'knex_migrations',
-        }, true); // true = rollback all
+        }, true);
         return migrations;
     }
 
-    /**
-     * Rollback multiple batches (by calling rollback repeatedly)
-     */
     async rollbackBatches(count: number): Promise<string[]> {
         let allMigrations: string[] = [];
         for (let i = 0; i < count; i++) {
@@ -184,9 +140,6 @@ export class KnexAdapter implements IDatabaseAdapter {
         return allMigrations;
     }
 
-    /**
-     * Get migration status
-     */
     async getMigrationStatus(): Promise<{
         pending: number;
         completed: number;
@@ -194,13 +147,11 @@ export class KnexAdapter implements IDatabaseAdapter {
         pendingMigrations?: string[];
     }> {
         try {
-            // Get completed migrations
             const completed = await this.db('knex_migrations')
                 .select('name', 'batch', 'migration_time')
                 .orderBy('batch', 'desc')
                 .orderBy('migration_time', 'desc');
 
-            // Get pending migrations
             const [pending] = await this.db.migrate.list({
                 directory: this.migrationsDir,
             });
@@ -209,17 +160,16 @@ export class KnexAdapter implements IDatabaseAdapter {
                 completed: completed.length,
                 pending: pending.length,
                 lastRun: completed[0]?.name,
-                pendingMigrations: pending.map((m: any) => m.file)
+                pendingMigrations: pending.map((m: any) => m.file),
             };
-        } catch (error) {
-            // Table might not exist yet
+        } catch {
             const [pending] = await this.db.migrate.list({
                 directory: this.migrationsDir,
             });
             return {
                 completed: 0,
                 pending: pending.length,
-                pendingMigrations: pending.map((m: any) => m.file)
+                pendingMigrations: pending.map((m: any) => m.file),
             };
         }
     }
@@ -285,6 +235,18 @@ export class KnexAdapter implements IDatabaseAdapter {
         options?: FindManyOptions
     ): Promise<unknown[]> {
         let query = this.db(this.getTableName(model)).where(this.toSnakeCase(filter));
+
+        // Keyset / cursor support — WHERE id > :after  or  WHERE id < :before
+        const cursorCol = options?.cursorField
+            ? options.cursorField.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`)
+            : 'id';
+
+        if (options?.after) {
+            query = query.where(cursorCol, '>', options.after);
+        } else if (options?.before) {
+            query = query.where(cursorCol, '<', options.before);
+        }
+
         if (options?.limit) query = query.limit(options.limit);
         if (options?.skip) query = query.offset(options.skip);
         if (options?.sort) {
@@ -296,18 +258,103 @@ export class KnexAdapter implements IDatabaseAdapter {
         return (rows as Record<string, unknown>[]).map(r => this.toCamelCase(r));
     }
 
+    async count(model: string, filter: Record<string, unknown>): Promise<number> {
+        const row = await this.db(this.getTableName(model))
+            .where(this.toSnakeCase(filter))
+            .count('* as n')
+            .first();
+        return Number((row as any)?.n ?? 0);
+    }
+
+    /**
+     * Insert a row.
+     *
+     * Behaviour by client:
+     * - PostgreSQL — uses RETURNING * (single round-trip).
+     * - MySQL / SQLite — does not support RETURNING. We generate the ID
+     *   ourselves (UUID v7) before the insert, then SELECT the row back.
+     *   This keeps the interface identical for all callers.
+     */
     async create(model: string, data: Record<string, unknown>): Promise<unknown> {
-        const rows = await this.db(this.getTableName(model))
-            .insert(this.toSnakeCase(data))
-            .returning('*');
+        const table = this.getTableName(model);
+        const now = new Date();
+        const hasUpdatedAt = !NO_UPDATED_AT_MODELS.has(model);
+
+        // Always supply id (application-generated UUID v7) — removes dependency
+        // on any database-level default which varies across PostgreSQL / MySQL / SQLite.
+        const base: Record<string, unknown> = {
+            id: generateSqlId(),
+            created_at: now,
+            ...(hasUpdatedAt ? { updated_at: now } : {}),
+            ...data,            // caller data wins — allows explicit id override in tests
+        };
+
+        const payload = this.toSnakeCase(base);
+
+        if (this.needsPostInsertSelect) {
+            // MySQL / SQLite: INSERT then SELECT
+            await this.db(table).insert(payload);
+            const row = await this.db(table).where({ id: payload['id'] }).first();
+            return this.toCamelCase(row as Record<string, unknown>);
+        }
+
+        // PostgreSQL: single round-trip with RETURNING
+        const rows = await this.db(table).insert(payload).returning('*');
         return this.toCamelCase(rows[0] as Record<string, unknown>);
     }
 
+    /**
+     * Update a row by id.
+     *
+     * Always injects updated_at so the timestamp is maintained regardless of
+     * whether a database trigger exists. Works on PostgreSQL, MySQL, and SQLite.
+     *
+     * Special keys:
+     *   - `<field>Increment` (e.g. `likesCountIncrement: 1`) → emits a raw
+     *     atomic SQL expression `likes_count = likes_count + 1`. This keeps
+     *     counter increments safe under concurrent writes without transactions.
+     */
     async update(model: string, id: string, data: Record<string, unknown>): Promise<unknown> {
-        const rows = await this.db(this.getTableName(model))
-            .where({ id })
-            .update(this.toSnakeCase(data))
-            .returning('*');
+        const table = this.getTableName(model);
+        const hasUpdatedAt = !NO_UPDATED_AT_MODELS.has(model);
+
+        // Separate raw increment directives from plain fields
+        const incrementFields: Record<string, number> = {};
+        const plainFields: Record<string, unknown> = {};
+
+        for (const [key, value] of Object.entries(data)) {
+            if (key.endsWith('Increment') && typeof value === 'number') {
+                // e.g. likesCountIncrement → likes_count
+                const column = key
+                    .slice(0, -'Increment'.length)
+                    .replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
+                incrementFields[column] = value;
+            } else {
+                plainFields[key] = value;
+            }
+        }
+
+        // Build the final update payload
+        const payload: Record<string, unknown> = {
+            ...this.toSnakeCase({
+                ...plainFields,
+                ...(hasUpdatedAt ? { updated_at: new Date() } : {}),
+            }),
+        };
+
+        // Merge raw expressions for atomic counter increments
+        for (const [column, delta] of Object.entries(incrementFields)) {
+            payload[column] = this.db.raw(`?? + ?`, [column, delta]);
+        }
+
+        if (this.needsPostInsertSelect) {
+            const count = await this.db(table).where({ id }).update(payload);
+            if (count === 0) return null;
+            const row = await this.db(table).where({ id }).first();
+            return row ? this.toCamelCase(row as Record<string, unknown>) : null;
+        }
+
+        const rows = await this.db(table).where({ id }).update(payload).returning('*');
         return rows[0] ? this.toCamelCase(rows[0] as Record<string, unknown>) : null;
     }
 
@@ -320,8 +367,11 @@ export class KnexAdapter implements IDatabaseAdapter {
         return this.db.transaction(fn as (trx: Knex.Transaction) => Promise<T>);
     }
 
-    /** Expose the raw Knex instance — used by the migration CLI path. */
     getKnex(): Knex {
+        return this.db;
+    }
+
+    getClient(): Knex {
         return this.db;
     }
 
@@ -329,12 +379,5 @@ export class KnexAdapter implements IDatabaseAdapter {
         const def = this.tableDefs.get(model);
         if (!def) throw new Error(`KnexAdapter: model "${model}" not registered`);
         return def.tableName;
-    }
-
-    /**
-     * Get the underlying Knex instance
-     */
-    getClient(): Knex {
-        return this.db;
     }
 }
