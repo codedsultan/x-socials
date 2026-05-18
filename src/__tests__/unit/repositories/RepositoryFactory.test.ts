@@ -15,8 +15,8 @@ function makeMockAdapter(): IDatabaseAdapter {
         connect: vi.fn(), disconnect: vi.fn(), isConnected: vi.fn().mockResolvedValue(true),
         registerModel: vi.fn(), migrate: vi.fn(),
         findOne: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]),
-        create: vi.fn(), update: vi.fn(), delete: vi.fn(), withTransaction: vi.fn(),
-        getClient: vi.fn()
+        create: vi.fn(), update: vi.fn(), delete: vi.fn(), count: vi.fn().mockResolvedValue(0),
+        withTransaction: vi.fn(), getClient: vi.fn()
     };
 }
 
