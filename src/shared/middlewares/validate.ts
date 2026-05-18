@@ -19,7 +19,15 @@ export function validate<T>(schema: ZodSchema<T>, target: ValidateTarget = 'body
       const msg = first?.message ?? 'Validation error';
       return next(ApiError.badRequest(`${field}: ${msg}`));
     }
-    (req as any)[target] = result.data;
+    if (target === 'body') {
+      (req as any).body = result.data;
+    } else {
+      // req.query / req.params are getter-only on IncomingMessage in router v2 —
+      // mutate the existing object in place rather than replacing the reference.
+      const dest = (req as any)[target] as Record<string, unknown>;
+      for (const key of Object.keys(dest)) delete dest[key];
+      Object.assign(dest, result.data as Record<string, unknown>);
+    }
     next();
   };
 }

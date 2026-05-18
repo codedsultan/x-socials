@@ -251,7 +251,8 @@ export class KnexAdapter implements IDatabaseAdapter {
         if (options?.skip) query = query.offset(options.skip);
         if (options?.sort) {
             for (const [key, order] of Object.entries(options.sort)) {
-                query = query.orderBy(key, order === 1 ? 'asc' : 'desc');
+                const col = key.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
+                query = query.orderBy(col, order === 1 ? 'asc' : 'desc');
             }
         }
         const rows = await query;
