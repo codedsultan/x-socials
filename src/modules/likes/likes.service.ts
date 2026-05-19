@@ -1,15 +1,22 @@
-import type { RepositoryFactory } from '../../factories/RepositoryFactory';
-import type { LikeRepository } from '../../repositories/LikeRepository';
-import type { PostRepository } from '../../repositories/PostRepository';
+import type { RepositoryFactory }    from '../../factories/RepositoryFactory';
+import type { LikeRepository }       from '../../repositories/LikeRepository';
+import type { PostRepository }       from '../../repositories/PostRepository';
+import type { CommentRepository }    from '../../repositories/CommentRepository';
+import { NotificationDispatcher }   from '../notifications/notifications.service';
 import type { LikeTarget, LikeResponse } from './likes.types';
 
 export class LikesService {
   private get likeRepo(): LikeRepository {
     return this.repoFactory.getRepository<any>('Like') as LikeRepository;
   }
-
   private get postRepo(): PostRepository {
     return this.repoFactory.getRepository<any>('Post') as PostRepository;
+  }
+  private get commentRepo(): CommentRepository {
+    return this.repoFactory.getRepository<any>('Comment') as CommentRepository;
+  }
+  private get notifDispatcher(): NotificationDispatcher {
+    return new NotificationDispatcher(this.repoFactory);
   }
 
   constructor(private readonly repoFactory: RepositoryFactory) {}
@@ -21,17 +28,27 @@ export class LikesService {
       const existing = await this.likeRepo.findOne({ userId: actingUserId, targetId, targetType });
       if (existing) {
         await this.likeRepo.delete(existing.id);
-        if (targetType === 'post') {
-          await this.decrementPostLikes(targetId);
-        }
+        if (targetType === 'post') await this.decrementPostLikes(targetId);
       }
       return { liked: false, targetId, targetType };
     }
 
     await this.likeRepo.create({ userId: actingUserId, targetId, targetType });
+
     if (targetType === 'post') {
       await this.postRepo.incrementLikes(targetId);
+      // Notify post author (fire-and-forget — don't fail the like if this errors)
+      this.postRepo.findById(targetId).then(post => {
+        if (post) this.notifDispatcher.onLikePost(actingUserId, post.authorId, targetId);
+      }).catch(() => {});
     }
+
+    if (targetType === 'comment') {
+      this.commentRepo.findById(targetId).then(comment => {
+        if (comment) this.notifDispatcher.onLikeComment(actingUserId, comment.authorId, targetId);
+      }).catch(() => {});
+    }
+
     return { liked: true, targetId, targetType };
   }
 

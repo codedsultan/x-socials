@@ -1,4 +1,3 @@
-// src/database/adapters/KnexAdapter.ts
 import knex, { type Knex } from 'knex';
 import path from 'path';
 import type { IDatabaseAdapter, FindManyOptions } from '../../interfaces/db/IAdapter';
@@ -234,7 +233,17 @@ export class KnexAdapter implements IDatabaseAdapter {
         filter: Record<string, unknown>,
         options?: FindManyOptions
     ): Promise<unknown[]> {
-        let query = this.db(this.getTableName(model)).where(this.toSnakeCase(filter));
+        // let query = this.db(this.getTableName(model)).where(this.toSnakeCase(filter));
+        let query = this.db(this.getTableName(model));
+
+        const snakeFilter = this.toSnakeCase(filter);
+        for (const [col, val] of Object.entries(snakeFilter)) {
+            if (Array.isArray(val)) {
+                query = query.whereIn(col, val as any[]);
+            } else {
+                query = query.where(col, val as any);
+            }
+        }
 
         // Keyset / cursor support — WHERE id > :after  or  WHERE id < :before
         const cursorCol = options?.cursorField
@@ -259,11 +268,25 @@ export class KnexAdapter implements IDatabaseAdapter {
         return (rows as Record<string, unknown>[]).map(r => this.toCamelCase(r));
     }
 
+    // async count(model: string, filter: Record<string, unknown>): Promise<number> {
+    //     const row = await this.db(this.getTableName(model))
+    //         .where(this.toSnakeCase(filter))
+    //         .count('* as n')
+    //         .first();
+    //     return Number((row as any)?.n ?? 0);
+    // }
+
     async count(model: string, filter: Record<string, unknown>): Promise<number> {
-        const row = await this.db(this.getTableName(model))
-            .where(this.toSnakeCase(filter))
-            .count('* as n')
-            .first();
+        let query = this.db(this.getTableName(model));
+        const snakeFilter = this.toSnakeCase(filter);
+        for (const [col, val] of Object.entries(snakeFilter)) {
+            if (Array.isArray(val)) {
+                query = (query as any).whereIn(col, val);
+            } else {
+                query = (query as any).where(col, val);
+            }
+        }
+        const row = await (query as any).count('* as n').first();
         return Number((row as any)?.n ?? 0);
     }
 

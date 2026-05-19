@@ -6,6 +6,7 @@ import {
   buildOffsetPage, buildKeysetPage, offsetToSkip,
   type OffsetParams, type KeysetParams, type PagedResult,
 } from '../../shared/helpers/paginate';
+import { NotificationDispatcher } from '../notifications/notifications.service';
 import type { UpdateProfileDto, UserProfile, FollowStatusResponse } from './users.types';
 
 export class UsersService {
@@ -17,7 +18,11 @@ export class UsersService {
     return this.repoFactory.getRepository<any>('Follow') as FollowRepository;
   }
 
-  constructor(private readonly repoFactory: RepositoryFactory) {}
+  private get notifDispatcher(): NotificationDispatcher {
+    return new NotificationDispatcher(this.repoFactory);
+  }
+
+  constructor(private readonly repoFactory: RepositoryFactory) { }
 
   async getProfile(userId: string, viewerUserId?: string): Promise<UserProfile> {
     const user = await this.userRepo.findById(userId);
@@ -32,8 +37,14 @@ export class UsersService {
     ]);
 
     return {
-      id: user.id, name: user.name, email: user.email, createdAt: user.createdAt,
-      followerCount, followingCount, isFollowedByMe: isFollowedByMe || false,
+      id: user.id,
+      name: user.name,
+      // Only expose email to the profile owner — omit for other viewers
+      email: (!viewerUserId || viewerUserId === userId) ? user.email : undefined,
+      createdAt: user.createdAt,
+      followerCount,
+      followingCount,
+      isFollowedByMe: isFollowedByMe || false,
     };
   }
 
@@ -42,6 +53,7 @@ export class UsersService {
     if (!user) throw ApiError.notFound('User not found');
     const updated = await this.userRepo.update(userId, { ...dto });
     if (!updated) throw ApiError.internal('Update failed');
+    // Owner gets their own email back after update
     return { id: updated.id, name: updated.name, email: updated.email, createdAt: updated.createdAt };
   }
 
@@ -55,8 +67,9 @@ export class UsersService {
       this.userRepo.count({}),
     ]);
 
+    // Email is omitted from public listings — only the owner sees their own email
     const profiles = users.map(u => ({
-      id: u.id, name: u.name, email: u.email, createdAt: u.createdAt,
+      id: u.id, name: u.name, createdAt: u.createdAt,
     }));
     return buildOffsetPage(profiles, total, { page, limit });
   }
@@ -68,6 +81,8 @@ export class UsersService {
     const alreadyFollowing = await this.followRepo.isFollowing(actingUserId, targetUserId);
     if (alreadyFollowing) throw ApiError.conflict('You are already following this user');
     await this.followRepo.follow(actingUserId, targetUserId);
+    // Notify the followed user (fire-and-forget)
+    this.notifDispatcher.onFollow(actingUserId, targetUserId).catch(() => { });
     return { followerId: actingUserId, followingId: targetUserId, following: true };
   }
 
@@ -82,6 +97,10 @@ export class UsersService {
    * Keyset-paginated followers list.
    * Uses follower `userId` as the cursor — stable under concurrent new follows.
    */
+  /**
+   * Keyset-paginated followers list.
+   * Uses findByIds() for a single batch SQL/Mongo query instead of N findById() calls.
+   */
   async getFollowers(userId: string, params: KeysetParams): Promise<PagedResult<UserProfile>> {
     const target = await this.userRepo.findById(userId);
     if (!target) throw ApiError.notFound('User not found');
@@ -90,13 +109,18 @@ export class UsersService {
     const followRows = await this.followRepo.findMany(
       { followingId: userId } as any,
       { limit: limit + 1, after, before, cursorField: 'followerId', sort: { followerId: 1 } }
-    );
+    ) as any[];
 
-    const ids = (followRows as any[]).map(r => r.followerId);
-    const users = await Promise.all(ids.map(id => this.userRepo.findById(id)));
-    const profiles = users
-      .filter((u): u is NonNullable<typeof u> => u !== null)
-      .map(u => ({ id: u.id, name: u.name, email: u.email, createdAt: u.createdAt }));
+    // Batch-fetch profiles — one query regardless of page size
+    const ids = followRows.slice(0, limit).map((r: any) => r.followerId);
+    const users = await this.userRepo.findByIds(ids);
+    const byId = new Map(users.map(u => [u.id, u]));
+
+    // Preserve the follow-row order so cursor pagination is stable
+    const profiles = ids
+      .map(id => byId.get(id))
+      .filter((u): u is NonNullable<typeof u> => u !== null && u !== undefined)
+      .map(u => ({ id: u.id, name: u.name, createdAt: u.createdAt })); // email omitted — public list
 
     return buildKeysetPage(profiles, limit, 'id');
   }
@@ -112,13 +136,16 @@ export class UsersService {
     const followRows = await this.followRepo.findMany(
       { followerId: userId } as any,
       { limit: limit + 1, after, before, cursorField: 'followingId', sort: { followingId: 1 } }
-    );
+    ) as any[];
 
-    const ids = (followRows as any[]).map(r => r.followingId);
-    const users = await Promise.all(ids.map(id => this.userRepo.findById(id)));
-    const profiles = users
-      .filter((u): u is NonNullable<typeof u> => u !== null)
-      .map(u => ({ id: u.id, name: u.name, email: u.email, createdAt: u.createdAt }));
+    const ids = followRows.slice(0, limit).map((r: any) => r.followingId);
+    const users = await this.userRepo.findByIds(ids);
+    const byId = new Map(users.map(u => [u.id, u]));
+
+    const profiles = ids
+      .map(id => byId.get(id))
+      .filter((u): u is NonNullable<typeof u> => u !== null && u !== undefined)
+      .map(u => ({ id: u.id, name: u.name, createdAt: u.createdAt })); // email omitted — public list
 
     return buildKeysetPage(profiles, limit, 'id');
   }

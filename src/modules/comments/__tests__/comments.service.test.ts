@@ -31,8 +31,27 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
     exists: vi.fn(), findByAuthor: vi.fn(), findByTag: vi.fn(),
     incrementLikes: vi.fn(), count: vi.fn().mockResolvedValue(0),
   };
+    const notifRepo = {
+    notify:      vi.fn().mockResolvedValue(null),
+    listForUser: vi.fn().mockResolvedValue([]),
+    countUnread: vi.fn().mockResolvedValue(0),
+    markRead:    vi.fn().mockResolvedValue(true),
+    markAllRead: vi.fn().mockResolvedValue(undefined),
+    findMany:    vi.fn().mockResolvedValue([]),
+    findById:    vi.fn().mockResolvedValue(null),
+    findOne:     vi.fn().mockResolvedValue(null),
+    create:      vi.fn().mockResolvedValue({ id: 'n1' }),
+    update:      vi.fn().mockResolvedValue(null),
+    delete:      vi.fn().mockResolvedValue(true),
+    exists:      vi.fn().mockResolvedValue(false),
+    count:       vi.fn().mockResolvedValue(0),
+  };
   return {
-    getRepository: vi.fn((name: string) => name === 'Comment' ? commentRepo : postRepo),
+    getRepository: vi.fn((name: string) => {
+      if (name === 'Comment')      return commentRepo;
+      if (name === 'Notification') return notifRepo;
+      return postRepo;
+    }),
     _commentRepo: commentRepo,
     _postRepo: postRepo,
   };

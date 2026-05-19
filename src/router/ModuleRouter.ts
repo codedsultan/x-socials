@@ -4,7 +4,8 @@ import usersRoutes from '../modules/users/users.routes';
 import postsRoutes from '../modules/posts/posts.routes';
 import commentsRoutes from '../modules/comments/comments.routes';
 import likesRoutes from '../modules/likes/likes.routes';
-import feedRoutes from '../modules/feed/feed.routes';
+import feedRoutes          from '../modules/feed/feed.routes';
+import notificationRoutes  from '../modules/notifications/notifications.routes';
 import Logger from '../logger';
 
 /**
@@ -37,6 +38,9 @@ export class ModuleRouter {
 
     // ── Feed ──────────────────────────────────────────────────────────────────
     app.use(`${p}/feed`, feedRoutes);
+
+    // ── Notifications ─────────────────────────────────────────────────────────
+    app.use(`${p}/notifications`, notificationRoutes);
 
     Logger.getInstance().info(`ModuleRouter :: Modules mounted at ${p}`);
     Logger.getInstance().info(`  POST   ${p}/auth/register`);

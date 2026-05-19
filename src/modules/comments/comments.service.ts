@@ -4,6 +4,7 @@ import type { PostRepository }     from '../../repositories/PostRepository';
 import { ApiError }                from '../../shared/errors/ApiError';
 import { buildKeysetPage }         from '../../shared/helpers/paginate';
 import type { CreateCommentDto, UpdateCommentDto, CommentResponse } from './comments.types';
+import { NotificationDispatcher } from '../notifications/notifications.service';
 import type { PagedResult } from '../../shared/helpers/paginate';
 
 export interface ListCommentsParams {
@@ -19,6 +20,10 @@ export class CommentsService {
 
   private get postRepo(): PostRepository {
     return this.repoFactory.getRepository<any>('Post') as PostRepository;
+  }
+
+  private get notifDispatcher(): NotificationDispatcher {
+    return new NotificationDispatcher(this.repoFactory);
   }
 
   constructor(private readonly repoFactory: RepositoryFactory) {}
@@ -84,12 +89,26 @@ export class CommentsService {
       }
     }
 
-    return this.commentRepo.create({
+    const comment = await this.commentRepo.create({
       postId,
       authorId: actingUserId,
       content:  dto.content,
       parentId: dto.parentId ?? null,
-    }) as Promise<CommentResponse>;
+    }) as CommentResponse;
+
+    // Notify post author of new comment (unless commenter is the author)
+    this.postRepo.findById(postId).then(post => {
+      if (post) this.notifDispatcher.onComment(actingUserId, post.authorId, postId);
+    }).catch(() => {});
+
+    // If reply, notify the parent comment's author
+    if (dto.parentId) {
+      this.commentRepo.findById(dto.parentId).then(parent => {
+        if (parent) this.notifDispatcher.onReply(actingUserId, parent.authorId, (comment as any).id);
+      }).catch(() => {});
+    }
+
+    return comment;
   }
 
   async updateComment(actingUserId: string, commentId: string, dto: UpdateCommentDto): Promise<CommentResponse> {

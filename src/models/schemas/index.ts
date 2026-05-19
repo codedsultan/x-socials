@@ -12,10 +12,11 @@
  */
 
 import type { Knex } from 'knex';
-import { usersTable }   from './sql/users.table';
-import { otpsTable }    from './sql/otps.table';
-import { tokensTable }  from './sql/tokens.table';
-import { followsTable } from './sql/follows.table';
+import { usersTable }         from './sql/users.table';
+import { otpsTable }          from './sql/otps.table';
+import { tokensTable }        from './sql/tokens.table';
+import { followsTable }       from './sql/follows.table';
+import { notificationsTable } from './sql/notifications.table';
 import { postMongoSchema, postSchemaIndexes }       from './mongo/post.schema';
 import { commentMongoSchema, commentSchemaIndexes } from './mongo/comment.schema';
 import { likeMongoSchema, likeSchemaIndexes }       from './mongo/like.schema';
@@ -40,11 +41,12 @@ export interface ModelSchemaEntry {
 }
 
 export const ModelSchemas: Record<string, ModelSchemaEntry> = {
-    User:    { sql: usersTable },
-    Otp:     { sql: otpsTable },
-    Token:   { sql: tokensTable },
-    Follow:  { sql: followsTable },
-    Post:    { mongo: postMongoSchema,    mongoIndexes: postSchemaIndexes },
-    Comment: { mongo: commentMongoSchema, mongoIndexes: commentSchemaIndexes },
-    Like:    { mongo: likeMongoSchema,    mongoIndexes: likeSchemaIndexes },
+    User:         { sql: usersTable },
+    Otp:          { sql: otpsTable },
+    Token:        { sql: tokensTable },
+    Follow:       { sql: followsTable },
+    Notification: { sql: notificationsTable },
+    Post:         { mongo: postMongoSchema,    mongoIndexes: postSchemaIndexes },
+    Comment:      { mongo: commentMongoSchema, mongoIndexes: commentSchemaIndexes },
+    Like:         { mongo: likeMongoSchema,    mongoIndexes: likeSchemaIndexes },
 };

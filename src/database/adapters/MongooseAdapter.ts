@@ -1,4 +1,3 @@
-// src/database/adapters/MongooseAdapter.ts
 import mongoose from 'mongoose';
 import type { IDatabaseAdapter, FindManyOptions } from '../../interfaces/db/IAdapter';
 import type { ModelSchemaEntry } from '../../models/schemas';
@@ -101,7 +100,12 @@ export class MongooseAdapter implements IDatabaseAdapter {
         filter: Record<string, unknown>,
         options?: FindManyOptions
     ): Promise<unknown[]> {
-        const queryFilter = { ...filter };
+        // const queryFilter = { ...filter };
+        const queryFilter: Record<string, unknown> = {};
+        for (const [key, val] of Object.entries(filter)) {
+            queryFilter[key] = Array.isArray(val) ? { $in: val } : val;
+        }
+
 
         // Cursor support — compare on _id (ObjectId sorts chronologically)
         // or a custom cursorField when specified.
@@ -115,9 +119,9 @@ export class MongooseAdapter implements IDatabaseAdapter {
         }
 
         let query = this.getModel(model).find(queryFilter);
-        if (options?.limit)    query = query.limit(options.limit);
-        if (options?.skip)     query = query.skip(options.skip);
-        if (options?.sort)     query = query.sort(options.sort);
+        if (options?.limit) query = query.limit(options.limit);
+        if (options?.skip) query = query.skip(options.skip);
+        if (options?.sort) query = query.sort(options.sort);
         if (options?.populate) query = query.populate(options.populate.join(' '));
 
         const docs = await query.lean();

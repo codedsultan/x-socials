@@ -1,3 +1,4 @@
+// src/modules/feed/feed.service.ts
 import type { RepositoryFactory } from '../../factories/RepositoryFactory';
 import type { PostRepository } from '../../repositories/PostRepository';
 import type { LikeRepository } from '../../repositories/LikeRepository';
@@ -29,13 +30,8 @@ export class FeedService {
     return this.repoFactory.getRepository<any>('Follow') as FollowRepository;
   }
 
-  constructor(private readonly repoFactory: RepositoryFactory) {}
+  constructor(private readonly repoFactory: RepositoryFactory) { }
 
-  /**
-   * Home feed — cursor-paginated, newest first.
-   * Authenticated: posts from followed authors (falls back to global when following nobody).
-   * Unauthenticated: global feed.
-   */
   async getHomeFeed(options: FeedOptions): Promise<PagedResult<FeedItem>> {
     const { limit, cursor, viewerUserId } = options;
     const after = cursor ? (decodeCursor(cursor) ?? undefined) : undefined;
@@ -46,25 +42,13 @@ export class FeedService {
       const followingIds = await this.followRepo.getFollowingIds(viewerUserId);
 
       if (followingIds.length > 0) {
-        // Fetch limit+1 from each followed author, merge, re-sort, slice
-        const perAuthor = await Promise.all(
-          followingIds.map(authorId =>
-            this.postRepo.findByAuthor(authorId, {
-              limit:  limit + 1,
-              sort:   { createdAt: -1 },
-              after,
-              cursorField: 'id',
-            })
-          )
-        );
-        rawPosts = perAuthor
-          .flat()
-          .sort((a, b) => {
-            const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return tb - ta;
-          })
-          .slice(0, limit + 1) as PostResponse[];
+        // Single $in query — replaces N parallel findByAuthor calls
+        rawPosts = (await this.postRepo.findByAuthorIds(followingIds, {
+          limit: limit + 1,
+          sort: { createdAt: -1 } as Record<string, 1 | -1>,
+          after,
+          cursorField: 'id',
+        })) as PostResponse[];
       } else {
         rawPosts = (await this.postRepo.findMany(
           {},
@@ -81,28 +65,25 @@ export class FeedService {
     const page = buildCursorPage(rawPosts, limit, 'id');
     return {
       items: await this.attachLikedByMe(page.items, viewerUserId),
-      meta:  page.meta,
+      meta: page.meta,
     };
   }
 
-  /**
-   * Posts by a specific author — cursor-paginated, newest first.
-   */
   async getUserFeed(authorId: string, options: FeedOptions): Promise<PagedResult<FeedItem>> {
     const { limit, cursor, viewerUserId } = options;
     const after = cursor ? (decodeCursor(cursor) ?? undefined) : undefined;
 
     const raw = await this.postRepo.findByAuthor(authorId, {
-      limit:      limit + 1,
+      limit: limit + 1,
       after,
       cursorField: 'id',
-      sort:       { createdAt: -1 },
+      sort: { createdAt: -1 },
     }) as PostResponse[];
 
     const page = buildCursorPage(raw, limit, 'id');
     return {
       items: await this.attachLikedByMe(page.items, viewerUserId),
-      meta:  page.meta,
+      meta: page.meta,
     };
   }
 
@@ -116,8 +97,3 @@ export class FeedService {
     return posts.map((p, i) => ({ ...p, likedByMe: flags[i] ?? false }));
   }
 }
-
-export interface FeedItem extends PostResponse {
-  likedByMe: boolean;
-}
-

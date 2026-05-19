@@ -11,6 +11,8 @@ function makeUserRepo(overrides: Record<string, any> = {}) {
     findByEmail: vi.fn().mockResolvedValue(null),
     emailExists: vi.fn().mockResolvedValue(false),
     findMany: vi.fn().mockResolvedValue([makeUser()]),
+    // Batch fetch by id list — used by getFollowers/getFollowing
+    findByIds: vi.fn().mockResolvedValue([makeUser()]),
     create: vi.fn().mockResolvedValue(makeUser()),
     update: vi.fn().mockResolvedValue(makeUser({ name: 'Updated' })),
     delete: vi.fn().mockResolvedValue(true),
@@ -152,12 +154,14 @@ describe('UsersService', () => {
       const follower = makeUser({ id: 'user-2', email: 'b@b.com', name: 'Bob' });
       const factory = makeFactory(
         {
+          // findByIds is called with the batch of follower IDs
+          findByIds: vi.fn().mockResolvedValue([follower]),
+          // findById still needed for the guard check on the target user
           findById: vi.fn().mockImplementation((id: string) =>
-            Promise.resolve(id === 'user-1' ? makeUser() : id === 'user-2' ? follower : null)
+            Promise.resolve(id === 'user-1' ? makeUser() : null)
           ),
         },
-        { getFollowerIds: vi.fn().mockResolvedValue(['user-2']),
-          findMany: vi.fn().mockResolvedValue([{ followerId: 'user-2', followingId: 'user-1' }]) }
+        { findMany: vi.fn().mockResolvedValue([{ followerId: 'user-2', followingId: 'user-1' }]) }
       );
       const service = new UsersService(factory as any);
       const result = await service.getFollowers('user-1', { limit: 20 });
@@ -169,9 +173,8 @@ describe('UsersService', () => {
 
     it('returns empty items when nobody follows the user', async () => {
       const factory = makeFactory(
-        {},
-        { getFollowerIds: vi.fn().mockResolvedValue([]),
-          findMany: vi.fn().mockResolvedValue([]) }
+        { findByIds: vi.fn().mockResolvedValue([]) },
+        { findMany: vi.fn().mockResolvedValue([]) }
       );
       const service = new UsersService(factory as any);
       const result = await service.getFollowers('user-1', { limit: 20 });
@@ -181,7 +184,8 @@ describe('UsersService', () => {
     it('throws 404 when target user does not exist', async () => {
       const factory = makeFactory({ findById: vi.fn().mockResolvedValue(null) });
       const service = new UsersService(factory as any);
-      await expect(service.getFollowers('missing', { limit: 20 })).rejects.toMatchObject({ statusCode: 404 });
+      await expect(service.getFollowers('missing', { limit: 20 }))
+        .rejects.toMatchObject({ statusCode: 404 });
     });
   });
 
@@ -190,12 +194,12 @@ describe('UsersService', () => {
       const followed = makeUser({ id: 'user-3', email: 'c@c.com', name: 'Charlie' });
       const factory = makeFactory(
         {
+          findByIds: vi.fn().mockResolvedValue([followed]),
           findById: vi.fn().mockImplementation((id: string) =>
-            Promise.resolve(id === 'user-1' ? makeUser() : id === 'user-3' ? followed : null)
+            Promise.resolve(id === 'user-1' ? makeUser() : null)
           ),
         },
-        { getFollowingIds: vi.fn().mockResolvedValue(['user-3']),
-          findMany: vi.fn().mockResolvedValue([{ followerId: 'user-1', followingId: 'user-3' }]) }
+        { findMany: vi.fn().mockResolvedValue([{ followerId: 'user-1', followingId: 'user-3' }]) }
       );
       const service = new UsersService(factory as any);
       const result = await service.getFollowing('user-1', { limit: 20 });
@@ -206,9 +210,8 @@ describe('UsersService', () => {
 
     it('returns empty items when user follows nobody', async () => {
       const factory = makeFactory(
-        {},
-        { getFollowingIds: vi.fn().mockResolvedValue([]),
-          findMany: vi.fn().mockResolvedValue([]) }
+        { findByIds: vi.fn().mockResolvedValue([]) },
+        { findMany: vi.fn().mockResolvedValue([]) }
       );
       const service = new UsersService(factory as any);
       const result = await service.getFollowing('user-1', { limit: 20 });
