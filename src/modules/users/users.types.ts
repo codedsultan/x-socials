@@ -5,7 +5,7 @@ export interface UpdateProfileDto {
 export interface UserProfile {
   id: string;
   name?: string;
-  email: string;
+  email?: string;
   createdAt?: Date;
   followerCount?: number;
   followingCount?: number;

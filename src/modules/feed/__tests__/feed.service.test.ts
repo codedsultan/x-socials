@@ -24,7 +24,12 @@ function makeFactory({
     findByAuthor: vi.fn().mockImplementation((authorId: string) =>
       Promise.resolve(posts.filter(p => p.authorId === authorId))
     ),
+    // Batch variant — returns all posts whose authorId is in the given list
+    findByAuthorIds: vi.fn().mockImplementation((authorIds: string[]) =>
+      Promise.resolve(posts.filter(p => authorIds.includes(p.authorId)))
+    ),
     findByTag: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(posts.length),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
@@ -111,8 +116,12 @@ describe('FeedService', () => {
 
       const result = await service.getHomeFeed({ limit: 20, viewerUserId: 'user-1' });
 
-      expect(factory._postRepo.findByAuthor).toHaveBeenCalledWith('user-2', expect.any(Object));
-      expect(factory._postRepo.findByAuthor).toHaveBeenCalledWith('user-3', expect.any(Object));
+      // FeedService now uses a single findByAuthorIds batch call — not N×findByAuthor
+      expect(factory._postRepo.findByAuthorIds).toHaveBeenCalledWith(
+        ['user-2', 'user-3'],
+        expect.any(Object)
+      );
+      expect(factory._postRepo.findByAuthor).not.toHaveBeenCalled();
       expect(result.items.length).toBeGreaterThan(0);
     });
 

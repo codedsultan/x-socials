@@ -21,8 +21,28 @@ function makeFactory({ alreadyLiked = false } = {}) {
     create: vi.fn(), delete: vi.fn(), findMany: vi.fn(), findOne: vi.fn(),
     exists: vi.fn(), findByAuthor: vi.fn(), findByTag: vi.fn(),
   };
+    const notifRepo = {
+    notify:      vi.fn().mockResolvedValue(null),
+    listForUser: vi.fn().mockResolvedValue([]),
+    countUnread: vi.fn().mockResolvedValue(0),
+    markRead:    vi.fn().mockResolvedValue(true),
+    markAllRead: vi.fn().mockResolvedValue(undefined),
+    findMany:    vi.fn().mockResolvedValue([]),
+    findById:    vi.fn().mockResolvedValue(null),
+    findOne:     vi.fn().mockResolvedValue(null),
+    create:      vi.fn().mockResolvedValue({ id: 'n1' }),
+    update:      vi.fn().mockResolvedValue(null),
+    delete:      vi.fn().mockResolvedValue(true),
+    exists:      vi.fn().mockResolvedValue(false),
+    count:       vi.fn().mockResolvedValue(0),
+  };
   return {
-    getRepository: vi.fn((name: string) => name === 'Like' ? likeRepo : postRepo),
+    getRepository: vi.fn((name: string) => {
+      if (name === 'Like')         return likeRepo;
+      if (name === 'Comment')      return { findById: vi.fn().mockResolvedValue(null) };
+      if (name === 'Notification') return notifRepo;
+      return postRepo;
+    }),
     _likeRepo: likeRepo,
     _postRepo: postRepo,
   };

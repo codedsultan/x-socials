@@ -14,9 +14,17 @@ export interface Post {
 
 export class PostRepository extends BaseRepository<Post> implements IRepository<Post> {
 
-    /** All posts by a given author, newest first by default. */
+    // /** All posts by a given author, newest first by default. */
     async findByAuthor(authorId: string, options?: FindOptions): Promise<Post[]> {
         return this.findMany({ authorId }, options);
+    }
+    /**
+     * All posts by any of the given authors in one query.
+     * Replaces N parallel findByAuthor() calls in FeedService.
+     */
+    async findByAuthorIds(authorIds: string[], options?: FindOptions): Promise<Post[]> {
+        if (authorIds.length === 0) return [];
+        return this.findMany({ authorId: authorIds } as unknown as Partial<Post>, options);
     }
 
     /**
