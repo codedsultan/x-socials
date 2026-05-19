@@ -1,4 +1,3 @@
-// src/database/adapters/MongooseAdapter.ts
 import mongoose from 'mongoose';
 import type { IDatabaseAdapter, FindManyOptions } from '../../interfaces/db/IAdapter';
 import type { ModelSchemaEntry } from '../../models/schemas';
@@ -47,21 +46,28 @@ export class MongooseAdapter implements IDatabaseAdapter {
             return;
         }
 
-        // Create schema with options
         const mongooseSchema = new mongoose.Schema(
             entry.mongo as mongoose.SchemaDefinition,
             {
                 timestamps: true,
                 toJSON: { virtuals: true, getters: true },
-                toObject: { virtuals: true, getters: true }
+                toObject: { virtuals: true, getters: true },
             }
         );
 
-        // Add virtual id field that maps to _id (only if Schema has virtual method)
-        if (mongooseSchema && typeof mongooseSchema.virtual === 'function') {
+        // Virtual `id` that maps _id → string (consistent with SQL adapter)
+        if (typeof mongooseSchema.virtual === 'function') {
             mongooseSchema.virtual('id').get(function (this: any) {
                 return this._id ? this._id.toString() : null;
             });
+        }
+
+        // Apply compound / additional indexes declared in the schema entry.
+        // These run ensureIndexes() on first connection — idempotent on repeat calls.
+        if (entry.mongoIndexes) {
+            for (const idx of entry.mongoIndexes) {
+                mongooseSchema.index(idx.fields as any, idx.options);
+            }
         }
 
         const model = mongoose.model<mongoose.Document>(name, mongooseSchema);
@@ -94,7 +100,25 @@ export class MongooseAdapter implements IDatabaseAdapter {
         filter: Record<string, unknown>,
         options?: FindManyOptions
     ): Promise<unknown[]> {
-        let query = this.getModel(model).find(filter);
+        // const queryFilter = { ...filter };
+        const queryFilter: Record<string, unknown> = {};
+        for (const [key, val] of Object.entries(filter)) {
+            queryFilter[key] = Array.isArray(val) ? { $in: val } : val;
+        }
+
+
+        // Cursor support — compare on _id (ObjectId sorts chronologically)
+        // or a custom cursorField when specified.
+        if (options?.after || options?.before) {
+            const field = options.cursorField ?? '_id';
+            if (options.after) {
+                queryFilter[field] = { $gt: options.after };
+            } else if (options.before) {
+                queryFilter[field] = { $lt: options.before };
+            }
+        }
+
+        let query = this.getModel(model).find(queryFilter);
         if (options?.limit) query = query.limit(options.limit);
         if (options?.skip) query = query.skip(options.skip);
         if (options?.sort) query = query.sort(options.sort);
@@ -102,12 +126,15 @@ export class MongooseAdapter implements IDatabaseAdapter {
 
         const docs = await query.lean();
 
-        // Convert _id to id for each document
         return docs.map(doc => ({
             ...doc,
             id: doc._id?.toString(),
-            _id: undefined
+            _id: undefined,
         }));
+    }
+
+    async count(model: string, filter: Record<string, unknown>): Promise<number> {
+        return this.getModel(model).countDocuments(filter);
     }
 
     async create(model: string, data: Record<string, unknown>): Promise<unknown> {
@@ -126,24 +153,28 @@ export class MongooseAdapter implements IDatabaseAdapter {
     }
 
     async update(model: string, id: string, data: Record<string, unknown>): Promise<unknown> {
-        // Remove id and _id from update data
+        // If data contains MongoDB update operators (keys starting with $),
+        // pass the payload as-is — operators must not be spread into a plain object.
+        // Otherwise wrap in $set so Mongoose performs a partial field update.
+        const hasOperators = Object.keys(data).some(k => k.startsWith('$'));
         const { id: _, _id, ...updateData } = data;
 
+        const updatePayload = hasOperators ? updateData : { $set: updateData };
+
         const doc = await this.getModel(model)
-            .findByIdAndUpdate(id, updateData, {
+            .findByIdAndUpdate(id, updatePayload, {
                 new: true,
                 runValidators: true,
-                returnDocument: 'after'
+                returnDocument: 'after',
             })
             .lean();
 
         if (!doc) return null;
 
-        // Return with id field
         return {
             ...doc,
             id: doc._id?.toString(),
-            _id: undefined
+            _id: undefined,
         };
     }
 

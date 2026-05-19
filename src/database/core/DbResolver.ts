@@ -166,14 +166,16 @@ export class DbResolver {
         if ('filename' in cfg) {
             // SQLite
             return {
-                client: cfg.client ?? 'sqlite3',
+                client: cfg.client ?? 'better-sqlite3',
                 connection: { filename: cfg.filename },
                 useNullAsDefault: true,
                 pool: { min: cfg.poolMin ?? 1, max: cfg.poolMax ?? 1 },
             };
         }
-        // Postgres / MySQL
+
         const c = cfg as NonNullable<IDatabaseConfig['postgres']>;
+        const isMySQL = _type === 'mysql';
+
         return {
             client: c.client ?? (_type === 'postgres' ? 'pg' : 'mysql2'),
             connection: {
@@ -183,8 +185,31 @@ export class DbResolver {
                 user: c.user,
                 password: c.password,
                 ssl: 'ssl' in c ? (c.ssl ? { rejectUnauthorized: false } : false) : undefined,
+                // MySQL keep-alive — prevents silent drops when the server's
+                // wait_timeout closes idle connections (default is 8 hours but
+                // many managed DBs set it to 60–120 s).
+                ...(isMySQL ? {
+                    enableKeepAlive: true,
+                    keepAliveInitialDelay: 10_000, // ms — first keep-alive ping
+                } : {}),
             },
-            pool: { min: c.poolMin ?? 2, max: c.poolMax ?? 10 },
+            pool: {
+                min: c.poolMin ?? 2,
+                max: c.poolMax ?? 10,
+                // Destroy connections that have been idle longer than
+                // MySQL's wait_timeout (conservatively 55 s < typical 60 s minimum).
+                // This ensures Knex retires the connection before the server drops it.
+                ...(isMySQL ? { idleTimeoutMillis: 55_000 } : {}),
+                // Validate the connection is still alive before handing it to a query.
+                // For MySQL, a lightweight SELECT 1 confirms the socket is healthy.
+                afterCreate: isMySQL
+                    ? (conn: any, done: (err: Error | null, conn: any) => void) => {
+                        conn.query('SELECT 1', (err: Error | null) => done(err, conn));
+                    }
+                    : undefined,
+            },
+            // Fail fast if the pool is exhausted — 30 s is generous.
+            acquireConnectionTimeout: 30_000,
         };
     }
 }

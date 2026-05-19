@@ -3,6 +3,12 @@ export interface FindManyOptions {
     skip?: number;
     sort?: Record<string, 1 | -1>;
     populate?: string[];
+    /** Cursor-based: only return docs/rows where cursorField > this opaque token */
+    after?: string;
+    /** Cursor-based: only return docs/rows where cursorField < this opaque token */
+    before?: string;
+    /** Which field drives cursor comparisons (defaults to 'id') */
+    cursorField?: string;
 }
 
 export interface IDatabaseAdapter {
@@ -10,22 +16,22 @@ export interface IDatabaseAdapter {
     disconnect(): Promise<void>;
     isConnected(): Promise<boolean>;
 
-    // Model registration — schema is adapter-specific (MongooseSchema or KnexTableDef)
     registerModel(name: string, schema: unknown): void;
-
-    // Migration (SQL only — no-op on Mongo)
     migrate(): Promise<void>;
 
-    // Generic CRUD
     findOne(model: string, filter: Record<string, unknown>): Promise<unknown>;
     findMany(model: string, filter: Record<string, unknown>, options?: FindManyOptions): Promise<unknown[]>;
+
+    /**
+     * Return the total number of documents/rows matching filter.
+     * Used by offset pagination to compute `total` and `totalPages`.
+     */
+    count(model: string, filter: Record<string, unknown>): Promise<number>;
+
     create(model: string, data: Record<string, unknown>): Promise<unknown>;
     update(model: string, id: string, data: Record<string, unknown>): Promise<unknown>;
     delete(model: string, id: string): Promise<boolean>;
 
-    // Transactions — fn receives the adapter-native transaction handle
     withTransaction<T>(fn: (trx: unknown) => Promise<T>): Promise<T>;
-
-    getClient(): unknown;  // Returns the underlying database client (Knex, Mongoose connection, etc.)
-
+    getClient(): unknown;
 }

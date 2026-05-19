@@ -10,6 +10,7 @@ import CORS from '../middlewares/CORS';
 import ExceptionHandler from '../exceptions/Handler';
 import { DatabaseInitializer } from '../database/initializer';
 import { shutdownTelemetry } from '../instrumentation';
+import { ModuleRouter } from '../router/ModuleRouter';
 
 export class ExpressApp {
     private _app: Application;
@@ -89,15 +90,27 @@ export class ExpressApp {
         const config = ConfigService.getServerConfig();
         const prefix = config.API_PREFIX || 'api';
 
+        // ── Infrastructure probes ──────────────────────────────────────────────
+        this._app.get('/', (_req: Request, res: Response) => {
+            const messages: Record<string, string> = {
+                development: '🚀 Development Server - Social Media API',
+                staging: '🧪 Staging Server - Social Media API',
+                production: '🌍 Production Server - Social Media API',
+                test: '🧪 Test Server - Social Media API',
+            };
+            res.json({
+                message: messages[config.NODE_ENV] || messages.development,
+                environment: config.NODE_ENV,
+                version: '1.0.0',
+                documentation: config.NODE_ENV !== 'production' ? '/api-docs' : 'https://docs.yourdomain.com',
+                timestamp: new Date().toISOString(),
+            });
+        });
 
-        // DEBUG: Log the actual prefix
-        Logger.getInstance().info(`=== API Prefix: "${prefix}" ===`);
-        Logger.getInstance().info(`=== Full path: /${prefix}/users ===`);
         this._app.get('/health', async (_req: Request, res: Response) => {
             const dbHealth = this.db.isInitialized()
                 ? await this.db.healthCheck()
                 : { error: 'not initialized' };
-
             res.status(200).json({
                 status: 'OK',
                 environment: config.NODE_ENV,
@@ -120,32 +133,6 @@ export class ExpressApp {
             res.status(200).json({ status: 'alive' });
         });
 
-        this._app.get('/', (_req: Request, res: Response) => {
-            const messages: Record<string, string> = {
-                development: '🚀 Development Server - Social Media API',
-                staging: '🧪 Staging Server - Social Media API',
-                production: '🌍 Production Server - Social Media API',
-                test: '🧪 Test Server - Social Media API',
-            };
-            res.json({
-                message: messages[config.NODE_ENV] || messages.development,
-                environment: config.NODE_ENV,
-                version: '1.0.0',
-                documentation: config.NODE_ENV !== 'production' ? '/api-docs' : 'https://docs.yourdomain.com',
-                timestamp: new Date().toISOString(),
-            });
-        });
-
-
-        this._app.get('/api/test', (_req: Request, res: Response) => {
-            res.json({
-                message: 'Test route works!',
-                timestamp: new Date().toISOString(),
-                env: config.NODE_ENV,
-                prefix: prefix
-            });
-        });
-
         this._app.get(`/${prefix}/environment`, (_req: Request, res: Response) => {
             res.json({
                 environment: config.NODE_ENV,
@@ -155,46 +142,8 @@ export class ExpressApp {
             });
         });
 
-        this._app.get(`/${prefix}/users`, async (req: Request, res: Response): Promise<void> => {
-            try {
-                Monitoring.getInstance().incrementExternalApiCall('user_list');
-
-                if (!req.repoFactory) {
-                    res.status(503).json({ error: 'Database not ready' });
-                    return;
-                }
-
-                const users = await req.repoFactory.getRepository('User').findMany({});
-                res.json({ users });
-            } catch (error) {
-                Logger.getInstance().error(`Error fetching users: ${error}`);
-                res.status(500).json({ error: 'Internal server error' });
-            }
-        });
-
-        this._app.get(`/${prefix}/posts`, async (req: Request, res: Response): Promise<void> => {
-            try {
-                Monitoring.getInstance().incrementExternalApiCall('post_list');
-
-                if (!req.repoFactory) {
-                    res.status(503).json({ error: 'Database not ready' });
-                    return;
-                }
-
-                // Exactly the same pattern as users!
-                const posts = await req.repoFactory.getRepository('Post').findMany({});
-                res.json({ posts });
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                Logger.getInstance().error(`Error fetching posts: ${errorMessage}`);
-                res.status(500).json({ error: 'Internal server error' });
-            }
-        });
-
-        this._app.get(`/${prefix}/error`, (_req: Request, _res: Response) => {
-            Monitoring.getInstance().recordError('TestError', `/${prefix}/error`);
-            throw new Error('Test error for monitoring');
-        });
+        // ── Feature modules ────────────────────────────────────────────────────
+        ModuleRouter.mount(this._app, prefix);
 
         Logger.getInstance().info('Routes :: Mounted');
     }

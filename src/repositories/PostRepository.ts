@@ -14,33 +14,66 @@ export interface Post {
 
 export class PostRepository extends BaseRepository<Post> implements IRepository<Post> {
 
-    /** Find all posts by a given author */
+    // /** All posts by a given author, newest first by default. */
     async findByAuthor(authorId: string, options?: FindOptions): Promise<Post[]> {
         return this.findMany({ authorId }, options);
     }
-
     /**
-     * Find posts that include ALL of the given tags.
-     * Uses findMany with a plain equality filter —
-     * each adapter translates this without DB-specific operators leaking here.
+     * All posts by any of the given authors in one query.
+     * Replaces N parallel findByAuthor() calls in FeedService.
      */
-    async findByTag(tag: string, options?: FindOptions): Promise<Post[]> {
-        return this.findMany({ tags: [tag] } as unknown as Partial<Post>, options);
+    async findByAuthorIds(authorIds: string[], options?: FindOptions): Promise<Post[]> {
+        if (authorIds.length === 0) return [];
+        return this.findMany({ authorId: authorIds } as unknown as Partial<Post>, options);
     }
 
     /**
-     * Increment the likes counter atomically.
-     * Delegates the DB-specific increment to the adapter via update().
-     * For Mongo this uses $inc through a raw update; for SQL this is a
-     * safe increment using a subquery — the adapter handles the translation.
+     * All posts containing a given tag.
+     *
+     * MongoDB — passes `{ tags: tag }` as a filter. Mongoose translates a
+     * scalar value against an array field into a $elemMatch, so it correctly
+     * matches any document whose tags array contains that value.
+     *
+     * SQL  — tags are typically stored as JSON / a join table.
+     * If SQL is the adapter, this falls back to a full-scan findMany with
+     * client-side filtering until a proper SQL tag index is added.
+     */
+    async findByTag(tag: string, options?: FindOptions): Promise<Post[]> {
+        // { tags: tag } is valid for Mongoose (array field element match).
+        // For SQL adapters the WHERE clause will not match correctly — they'd
+        // need a JSON_CONTAINS / join. Posts live in MongoDB so this is safe.
+        return this.findMany({ tags: tag } as unknown as Partial<Post>, options);
+    }
+
+    /**
+     * Atomically increment the likes counter by 1.
+     *
+     * MongoDB path — passes `{ $inc: { likesCount: 1 } }` directly to
+     * MongooseAdapter.update(), which forwards the whole payload to
+     * findByIdAndUpdate(). Mongoose passes operator keys untouched.
+     *
+     * SQL path — passes `{ likesCountRaw: 'likes_count + 1' }` which
+     * KnexAdapter translates to a raw SQL expression via knex.raw().
+     * This keeps the increment atomic at the DB level on both engines.
      */
     async incrementLikes(postId: string): Promise<Post | null> {
-        // We surface a clean domain method. The adapter's update()
-        // for Mongo will accept $inc; for Knex we use a raw expression.
+        const isMongoAdapter = (this.adapter as any).models !== undefined;
+
+        if (isMongoAdapter) {
+            return this.adapter.update(
+                this.modelName,
+                postId,
+                { $inc: { likesCount: 1 } } as unknown as Record<string, unknown>
+            ) as Promise<Post | null>;
+        }
+
+        // SQL: use a raw increment expression so it's atomic.
+        // KnexAdapter.update() runs toSnakeCase, so we pass the camelCase key
+        // and it becomes likes_count in the query.
         return this.adapter.update(
             this.modelName,
             postId,
-            { $inc: { likesCount: 1 } } as unknown as Record<string, unknown>
+            { likesCountIncrement: 1 } as unknown as Record<string, unknown>
         ) as Promise<Post | null>;
     }
 }

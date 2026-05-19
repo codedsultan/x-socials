@@ -14,6 +14,7 @@ function makeMockAdapter(): IDatabaseAdapter {
         create: vi.fn().mockResolvedValue({ id: '1', email: 'a@b.com' }),
         update: vi.fn().mockResolvedValue({ id: '1', email: 'b@b.com' }),
         delete: vi.fn().mockResolvedValue(true),
+        count: vi.fn().mockResolvedValue(0),
         withTransaction: vi.fn(),
         getClient: vi.fn()
     };

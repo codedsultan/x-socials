@@ -17,7 +17,7 @@ pnpm test:watch        # Watch mode
 pnpm test:coverage     # Coverage report (thresholds: 65% statements/functions/lines, 55% branches)
 
 # Run a single test file
-pnpm exec vitest run src/__tests__/unit/config/config.service.test.ts
+pnpm exec vitest run src/modules/auth/__tests__/auth.service.test.ts
 
 # Database migrations
 pnpm migrate:up        # Run pending migrations
@@ -33,48 +33,128 @@ pnpm db:drop           # Drop all tables
 
 ## Architecture
 
+### Module structure
+
+Each feature lives in `src/modules/<name>/` and owns exactly five files:
+
+```
+src/modules/<name>/
+  <name>.routes.ts      # Express Router: wires middleware + controller
+  <name>.controller.ts  # Thin handler: parse req → call service → send response
+  <name>.service.ts     # All business logic; receives repoFactory, never touches req/res
+  <name>.validator.ts   # Zod schemas exported as ready-to-use middleware
+  <name>.types.ts       # DTOs and response shapes for this module
+  __tests__/            # Unit tests co-located with the module
+```
+
+**No logic in controllers or routes.** Controllers do one thing: call a service method and pass the result to a response helper. Services receive `repoFactory` (and scalar IDs) as arguments — they never read from `req` directly. This makes services trivially testable without HTTP overhead.
+
+### Current modules
+
+| Module    | Routes prefix        | Key endpoints |
+|-----------|----------------------|---------------|
+| `auth`    | `/api/auth`          | POST register, login, refresh, logout; GET me |
+| `users`   | `/api/users`         | GET list, GET/PATCH me, GET :id |
+| `posts`   | `/api/posts`         | GET list (tag/author filter), GET/POST/PATCH/DELETE :id |
+| `comments`| `/api` (nested)      | GET/POST /posts/:postId/comments; GET replies, PATCH/DELETE /comments/:id |
+| `likes`   | `/api/likes`         | POST toggle, GET count |
+| `feed`    | `/api/feed`          | GET home feed, GET /users/:userId |
+
+### Shared infrastructure (`src/shared/`)
+
+Import from `../../shared`:
+
+```ts
+import { authenticate, validate, sendSuccess, ApiError, apiLimiter } from '../../shared';
+```
+
+| Export | Description |
+|--------|-------------|
+| `authenticate` | JWT middleware — attaches `req.currentUser = { id, email }` |
+| `optionalAuthenticate` | Same but does not reject requests without a token |
+| `validate(schema, target?)` | Zod middleware factory; target defaults to `'body'` |
+| `authLimiter` | 10 req / 15 min — use on login/register |
+| `apiLimiter` | 100 req / min — use as router-level default |
+| `writeLimiter` | 30 req / min — use on mutation endpoints |
+| `sendSuccess(res, data, opts?)` | 200 `{ success: true, data, message?, meta? }` |
+| `sendCreated(res, data, msg?)` | 201 equivalent |
+| `sendNoContent(res)` | 204 with no body |
+| `ApiError.badRequest(msg)` | 400 |
+| `ApiError.unauthorized(msg)` | 401 |
+| `ApiError.forbidden(msg)` | 403 |
+| `ApiError.notFound(msg)` | 404 |
+| `ApiError.conflict(msg)` | 409 |
+
+### Adding a new module
+
+1. Create `src/modules/<name>/` with the five standard files.
+2. Register the router in `src/router/ModuleRouter.ts`.
+3. Write service unit tests in `src/modules/<name>/__tests__/`.
+4. No changes needed to `ExpressApp`.
+
 ### Composition root
 
-`src/index.ts` is the composition root. All objects are wired explicitly there — nothing reaches for `getInstance()` chains mid-graph. `ConfigService.getDatabaseConfig()` → `DatabaseInitializer` → `buildDatabaseContainer()` → `ExpressApp`.
+`src/index.ts` → `DatabaseInitializer` → `ExpressApp` → `ModuleRouter.mount()`.
 
 ### Database layer
 
-The multi-database architecture centers on three classes:
-
-- **`DbRegistry`** (`src/database/core/DbRegistry.ts`) — holds the model→database routing table. Hard-coded: `User`, `Otp`, `Token` → SQL (whichever `SQL_DB` env var selects); `Post`, `Comment`, `Like` → MongoDB. Supports `DB_MODE=single` to override all models to one DB.
-
-- **`DbResolver`** (`src/database/core/DbResolver.ts`) — owns live adapter instances (`Map<DbType, IDatabaseAdapter>`). Constructed with `IDatabaseConfig`; instantiates `MongooseAdapter` or `KnexAdapter` for each configured DB. Exposes `getAdapterForModel(name)` which delegates to `DbRegistry`.
-
-- **`RepositoryFactory`** (`src/factories/RepositoryFactory.ts`) — caches repository instances. `getRepository('Post')` returns a `PostRepository` wired to the correct adapter. `BaseRepository` covers CRUD; domain repositories add model-specific queries.
+- **`DbRegistry`** — model→database routing. `User`, `Otp`, `Token` → SQL; `Post`, `Comment`, `Like` → MongoDB.
+- **`DbResolver`** — owns live adapter instances.
+- **`RepositoryFactory`** — caches repository instances. `getRepository('Post')` returns a `PostRepository`.
 
 ### Request → data flow
 
-`DatabaseInitializer.initialize()` calls `buildDatabaseContainer()`, which sets up `DbRegistry`, `DbResolver`, and `RepositoryFactory`. The Express app mounts a middleware that attaches `req.repoFactory` for use in route handlers. No global repository singletons — all repos flow through `req.repoFactory`.
-
-### Model schemas
-
-`src/models/schemas/index.ts` exports `ModelSchemas`, a unified registry. Each entry carries either a `sql` key (table name + Knex migration function) or a `mongo` key (Mongoose schema definition). `DbResolver.registerModels()` routes each entry to the correct adapter.
+```
+Request
+  → Global middleware (CORS, Helmet, Morgan, body-parser)
+  → repoFactory middleware
+  → Module router
+      → Rate limiter
+      → authenticate / optionalAuthenticate
+      → validate(schema)
+      → Controller → Service → Repository
+      → sendSuccess / sendCreated / sendNoContent
+  → ExceptionHandler
+```
 
 ### Config
 
-`ConfigService` (`src/config/config.service.ts`) is a singleton that reads all env vars at startup. `SQL_DB` env var selects the active SQL database (`mysql` | `postgres` | `sqlite`; defaults to `mysql`). In production, `JWT_SECRET` and `API_BASE_URL` are required; `JWT_SECRET` must be ≥ 32 chars.
+`ConfigService` reads all env vars at startup. `JWT_SECRET` must be ≥ 32 chars in production.
 
 ### Observability
 
-`src/instrumentation.ts` starts an OpenTelemetry SDK at process boot (imported before anything else in `src/index.ts`). Prometheus metrics are exposed on port `9464` at `/metrics` by default. In dev, HTTP instrumentation is disabled to reduce overhead; set `OTEL_ENABLE_TRACES=true` to enable full tracing.
+OpenTelemetry at process boot. Prometheus on port `9464` at `/metrics`. Probes: `/health`, `/ready`, `/live`.
 
 ## Testing conventions
 
-Tests live in `src/__tests__/unit/` and `src/__tests__/integration/`. Vitest runs all tests sequentially (`sequence.concurrent: false`) to avoid env-variable races between tests. Integration tests mock Express middleware and the DB layer rather than hitting real databases; use `supertest` for HTTP assertions. The `.env.test` file defaults to SQLite (`SQL_DB=sqlite`, `SQLITE_FILENAME=./data/test.sqlite`).
+- `src/__tests__/` — infra unit tests (config, database, repositories)
+- `src/modules/<name>/__tests__/` — module service and validator tests
+- `src/shared/__tests__/` — shared middleware and helper tests
+
+**Service tests use fakes, never real adapters.** Pattern:
+
+```ts
+function makeFactory(overrides = {}) {
+  const repo = { findById: vi.fn().mockResolvedValue(entity), ...overrides };
+  return { getRepository: vi.fn(() => repo), _repo: repo };
+}
+```
+
+**Config mocking:**
+```ts
+vi.mock('../../config/config.service', () => ({
+  default: { getServerConfig: () => ({ JWT_SECRET: 'test-secret-32-chars-min!!!!!' }) },
+}));
+```
 
 ## Key env vars
 
 | Variable | Purpose |
 |---|---|
-| `SQL_DB` | Active SQL DB: `mysql` \| `postgres` \| `sqlite` (default: `mysql`) |
-| `DB_MODE` | `split` (default) routes models by type; `single` routes all models to `DEFAULT_DB` |
-| `DEFAULT_DB` | Fallback DB for unmapped models (default: `mongodb`) |
-| `AUTO_MIGRATE` | Set `true` to run migrations at startup in non-dev environments |
-| `ENABLE_SWAGGER` | Swagger UI; auto-enabled in dev/staging, disabled in prod |
-| `OTEL_ENABLE_TRACES` | Enable full OpenTelemetry tracing (dev is metrics-only by default) |
-| `PROMETHEUS_METRICS_PORT` | Prometheus scrape port (default: `9464`) |
+| `SQL_DB` | `mysql` \| `postgres` \| `sqlite` (default: `mysql`) |
+| `DB_MODE` | `split` (default) or `single` |
+| `JWT_SECRET` | ≥ 32 chars; required in production |
+| `JWT_EXPIRES_IN` | Access token TTL (default: `7d`) |
+| `AUTO_MIGRATE` | `true` to run migrations at startup in non-dev |
+| `ENABLE_SWAGGER` | Auto-enabled in dev/staging |
+| `PROMETHEUS_METRICS_PORT` | Default: `9464` |

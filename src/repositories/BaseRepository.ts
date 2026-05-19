@@ -45,6 +45,10 @@ export class BaseRepository<T> implements IRepository<T> {
         return this.adapter.delete(this.modelName, id);
     }
 
+    async count(filter: Partial<T> = {} as Partial<T>): Promise<number> {
+        return this.adapter.count(this.modelName, filter as Record<string, unknown>);
+    }
+
     async exists(filter: Partial<T>): Promise<boolean> {
         const result = await this.adapter.findOne(
             this.modelName,
