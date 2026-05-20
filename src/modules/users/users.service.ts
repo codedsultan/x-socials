@@ -22,7 +22,7 @@ export class UsersService {
     return new NotificationDispatcher(this.repoFactory);
   }
 
-  constructor(private readonly repoFactory: RepositoryFactory) { }
+  constructor(private readonly repoFactory: RepositoryFactory) {}
 
   async getProfile(userId: string, viewerUserId?: string): Promise<UserProfile> {
     const user = await this.userRepo.findById(userId);
@@ -37,11 +37,12 @@ export class UsersService {
     ]);
 
     return {
-      id: user.id,
-      name: user.name,
+      id:             user.id,
+      name:           user.name,
       // Only expose email to the profile owner — omit for other viewers
-      email: (!viewerUserId || viewerUserId === userId) ? user.email : undefined,
-      createdAt: user.createdAt,
+      email:          (!viewerUserId || viewerUserId === userId) ? user.email : undefined,
+      suspended:      user.suspended ?? false,
+      createdAt:      user.createdAt,
       followerCount,
       followingCount,
       isFollowedByMe: isFollowedByMe || false,
@@ -82,7 +83,7 @@ export class UsersService {
     if (alreadyFollowing) throw ApiError.conflict('You are already following this user');
     await this.followRepo.follow(actingUserId, targetUserId);
     // Notify the followed user (fire-and-forget)
-    this.notifDispatcher.onFollow(actingUserId, targetUserId).catch(() => { });
+    this.notifDispatcher.onFollow(actingUserId, targetUserId).catch(() => {});
     return { followerId: actingUserId, followingId: targetUserId, following: true };
   }
 

@@ -125,6 +125,6 @@ export class CommentsService {
     const comment = await this.commentRepo.findById(commentId);
     if (!comment) throw ApiError.notFound('Comment not found');
     if (comment.authorId !== actingUserId) throw ApiError.forbidden('You can only delete your own comments');
-    await this.commentRepo.delete(commentId);
+    await this.commentRepo.softDelete(commentId, 'author_deleted');
   }
 }

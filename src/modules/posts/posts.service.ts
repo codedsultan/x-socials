@@ -107,6 +107,6 @@ export class PostsService {
     const post = await this.postRepo.findById(postId);
     if (!post) throw ApiError.notFound('Post not found');
     if (post.authorId !== actingUserId) throw ApiError.forbidden('You can only delete your own posts');
-    await this.postRepo.delete(postId);
+    await this.postRepo.softDelete(postId, 'author_deleted');
   }
 }

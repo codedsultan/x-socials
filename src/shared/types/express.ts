@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import type { RepositoryFactory } from '../../factories/RepositoryFactory';
 
 export interface ICurrentUser {
-  id: string;
+  id:    string;
   email: string;
 }
 
@@ -17,7 +17,7 @@ export interface IRequest extends Request {
 }
 
 export type IResponse = Response;
-export type INext = NextFunction;
+export type INext     = NextFunction;
 
 declare global {
   namespace Express {

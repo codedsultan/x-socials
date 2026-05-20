@@ -6,6 +6,7 @@ import commentsRoutes from '../modules/comments/comments.routes';
 import likesRoutes from '../modules/likes/likes.routes';
 import feedRoutes          from '../modules/feed/feed.routes';
 import notificationRoutes  from '../modules/notifications/notifications.routes';
+import adminRoutes          from '../modules/admin/admin.routes';
 import Logger from '../logger';
 
 /**
@@ -41,6 +42,9 @@ export class ModuleRouter {
 
     // ── Notifications ─────────────────────────────────────────────────────────
     app.use(`${p}/notifications`, notificationRoutes);
+
+    // ── Admin (requires admin role JWT) ───────────────────────────────────────
+    app.use(`${p}/admin`, adminRoutes);
 
     Logger.getInstance().info(`ModuleRouter :: Modules mounted at ${p}`);
     Logger.getInstance().info(`  POST   ${p}/auth/register`);

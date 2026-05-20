@@ -17,8 +17,7 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
     create: vi.fn().mockResolvedValue(makeComment()),
     update: vi.fn().mockResolvedValue(makeComment({ content: 'Updated' })),
     delete: vi.fn().mockResolvedValue(true),
-    findOne: vi.fn().mockResolvedValue(null),
-    // listForPost calls findMany({ postId, parentId: null }, { limit: limit+1, ... })
+    softDelete: vi.fn().mockResolvedValue(undefined),
     findMany: vi.fn().mockResolvedValue([makeComment()]),
     exists: vi.fn().mockResolvedValue(false),
     count: vi.fn().mockResolvedValue(1),
@@ -121,7 +120,7 @@ describe('CommentsService', () => {
       const factory = makeFactory();
       const service = new CommentsService(factory as any);
       await service.deleteComment('user-1', 'c-1');
-      expect(factory._commentRepo.delete).toHaveBeenCalledWith('c-1');
+      expect(factory._commentRepo.softDelete).toHaveBeenCalledWith('c-1', 'author_deleted');
     });
   });
 });

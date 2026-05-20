@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthService } from '../auth.service';
+import { ApiError } from '../../../shared/errors/ApiError';
 
 // ── Minimal repo fakes ────────────────────────────────────────────────────────
 
