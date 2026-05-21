@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PostsService } from '../posts.service';
 
 function makePost(overrides = {}) {
@@ -14,6 +14,7 @@ function makePostRepo(overrides: Record<string, any> = {}) {
     create: vi.fn().mockResolvedValue(makePost()),
     update: vi.fn().mockResolvedValue(makePost()),
     delete: vi.fn().mockResolvedValue(true),
+    softDelete: vi.fn().mockResolvedValue(undefined),
     exists: vi.fn().mockResolvedValue(false),
     findOne: vi.fn().mockResolvedValue(null),
     count: vi.fn().mockResolvedValue(1),
@@ -110,7 +111,7 @@ describe('PostsService', () => {
       const factory = makeFactory();
       const service = new PostsService(factory as any);
       await service.deletePost('user-1', 'post-1');
-      expect(factory._postRepo.delete).toHaveBeenCalledWith('post-1');
+      expect(factory._postRepo.softDelete).toHaveBeenCalledWith('post-1', 'author_deleted');
     });
   });
 });

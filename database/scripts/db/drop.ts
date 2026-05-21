@@ -1,6 +1,8 @@
-// scripts/db/drop.ts
+// scripts/db/drop.ts - Complete file with better debugging
+
 import { ConfigService } from '../../../src/config/config.service';
 import { KnexAdapter } from '../../../src/database/adapters/KnexAdapter';
+import mongoose from 'mongoose';
 import type { Knex } from 'knex';
 
 interface AdapterInfo {
@@ -126,56 +128,167 @@ async function dropAllTables(knex: Knex, dbType: string): Promise<void> {
     }
 }
 
-async function drop(): Promise<void> {
-    console.log('🗑️  Dropping all tables...\n');
+async function dropMongoDB(): Promise<{ success: boolean; error?: string }> {
+    const dbConfig = ConfigService.getDatabaseConfig();
 
-    const adapters = await getAdapters();
-
-    if (adapters.length === 0) {
-        console.log('ℹ️  No database adapters configured');
-        process.exit(0);
+    // Check if MongoDB is configured
+    if (!dbConfig.mongodb) {
+        console.log('   ℹ️  No MongoDB configured - skipping');
+        return { success: true };
     }
 
+    try {
+        console.log('   🗑️  Dropping MongoDB database...');
+
+        const mongoConfig = dbConfig.mongodb;
+        const dbName = mongoConfig.dbName || 'test';
+
+        // Get the MongoDB URI
+        const uri = mongoConfig.uri;
+        console.log(`      Connecting to: ${uri.replace(/\/\/.*@/, '//***:***@')}`); // Hide credentials
+
+        // Disconnect any existing connections first
+        if (mongoose.connection.readyState !== 0) {
+            console.log('      Disconnecting existing connections...');
+            await mongoose.disconnect();
+        }
+
+        // Connect to MongoDB
+        console.log('      Establishing new connection...');
+        await mongoose.connect(uri, {
+            dbName: dbName,
+        });
+
+        console.log(`      Connected to database: ${mongoose.connection.name}`);
+
+        // Try to drop the database
+        if (mongoose.connection.db) {
+            await mongoose.connection.db.dropDatabase();
+            console.log(`      ✅ Dropped MongoDB database: ${dbName}`);
+        } else {
+            // Fallback: Drop collections one by one
+            console.log('      ⚠️  Direct database drop unavailable, dropping collections...');
+            const collections = mongoose.connection.collections;
+            const collectionNames = Object.keys(collections);
+
+            if (collectionNames.length === 0) {
+                console.log('      ℹ️  No collections found to drop');
+            } else {
+                console.log(`      Found ${collectionNames.length} collections to drop`);
+                for (const collectionName of collectionNames) {
+                    try {
+                        await mongoose.connection.collections[collectionName].drop();
+                        console.log(`      Dropped collection: ${collectionName}`);
+                    } catch (err: any) {
+                        if (err.codeName === 'NamespaceNotFound') {
+                            console.log(`      Collection already dropped: ${collectionName}`);
+                        } else {
+                            console.log(`      Error dropping ${collectionName}:`, err.message);
+                        }
+                    }
+                }
+                console.log(`      ✅ Dropped ${collectionNames.length} collections`);
+            }
+        }
+
+        // Disconnect after dropping
+        await mongoose.disconnect();
+        console.log('   ✅ MongoDB cleaned successfully');
+        return { success: true };
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`   ❌ MongoDB drop failed:`, errorMessage);
+
+        // Additional debugging info
+        if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
+            console.log('   💡 MongoDB appears to be not running. Please start MongoDB first.');
+        } else if (error instanceof Error && error.message.includes('Authentication failed')) {
+            console.log('   💡 MongoDB authentication failed. Check your credentials in .env');
+        } else {
+            console.log('   💡 Make sure MongoDB is running and the URI in .env is correct');
+        }
+
+        return { success: false, error: errorMessage };
+    }
+}
+
+async function drop(): Promise<void> {
+    console.log('🗑️  Dropping all tables and databases...\n');
+
+    const adapters = await getAdapters();
     let successCount = 0;
     let failureCount = 0;
 
-    for (const { name, adapter } of adapters) {
-        try {
-            console.log(`📦 Processing ${name.toUpperCase()}...`);
-            await adapter.connect();
-            const knex = adapter.getClient();
+    // Drop SQL databases
+    if (adapters.length > 0) {
+        console.log('📊 Processing SQL databases:\n');
 
-            // Drop all application tables
-            console.log(`   🗑️  Dropping tables...`);
-            await dropAllTables(knex, name);
+        for (const { name, adapter } of adapters) {
+            try {
+                console.log(`📦 Processing ${name.toUpperCase()}...`);
+                await adapter.connect();
+                const knex = adapter.getClient();
 
-            // Drop migration tracking tables
-            console.log(`   🧹 Cleaning migration records...`);
-            await knex.schema.dropTableIfExists('knex_migrations');
-            await knex.schema.dropTableIfExists('knex_migrations_lock');
+                // Drop all application tables
+                console.log(`   🗑️  Dropping tables...`);
+                await dropAllTables(knex, name);
 
-            await adapter.disconnect();
-            console.log(`   ✅ ${name} cleaned successfully`);
-            successCount++;
-        } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`   ❌ ${name} failed:`, errorMessage);
-            failureCount++;
+                // Drop migration tracking tables
+                console.log(`   🧹 Cleaning migration records...`);
+                await knex.schema.dropTableIfExists('knex_migrations');
+                await knex.schema.dropTableIfExists('knex_migrations_lock');
+
+                await adapter.disconnect();
+                console.log(`   ✅ ${name} cleaned successfully`);
+                successCount++;
+            } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error(`   ❌ ${name} failed:`, errorMessage);
+                failureCount++;
+            }
+            console.log('');
         }
-        console.log('');
+    } else {
+        console.log('ℹ️  No SQL databases configured\n');
     }
+
+    // Drop MongoDB
+    console.log('📊 Processing MongoDB:\n');
+    const mongoResult = await dropMongoDB();
+
+    if (mongoResult.success) {
+        successCount++;
+    } else {
+        failureCount++;
+    }
+    console.log('');
 
     console.log(`📊 Summary: ${successCount} succeeded, ${failureCount} failed`);
 
     if (failureCount > 0) {
         console.log('\n⚠️  Some databases failed to drop. You may need to drop them manually.');
         console.log('\nManual cleanup commands:');
-        console.log('  MySQL: mysql -u root -p -e "DROP DATABASE IF EXISTS x_socials; CREATE DATABASE x_socials;"');
-        console.log('  SQLite: rm -f data/dev.sqlite');
+
+        // Show manual commands for configured SQL databases
+        const dbConfig = ConfigService.getDatabaseConfig();
+        if (dbConfig.mysql) {
+            console.log(`  MySQL: mysql -u ${dbConfig.mysql.user || 'root'} -p -e "DROP DATABASE IF EXISTS ${dbConfig.mysql.database}; CREATE DATABASE ${dbConfig.mysql.database};"`);
+        }
+        if (dbConfig.sqlite) {
+            console.log(`  SQLite: rm -f ${dbConfig.sqlite.filename}`);
+        }
+        if (dbConfig.postgres) {
+            console.log(`  PostgreSQL: psql -U ${dbConfig.postgres.user || 'postgres'} -c "DROP DATABASE IF EXISTS ${dbConfig.postgres.database};" -c "CREATE DATABASE ${dbConfig.postgres.database};"`);
+        }
+        if (dbConfig.mongodb) {
+            const mongoDbName = dbConfig.mongodb.dbName || 'test';
+            console.log(`  MongoDB: Use MongoDB Compass or run: mongosh --eval "db.getSiblingDB('${mongoDbName}').dropDatabase()"`);
+        }
+
         process.exit(1);
     }
 
-    console.log('✅ All tables dropped successfully');
+    console.log('✅ All databases cleaned successfully');
     process.exit(0);
 }
 

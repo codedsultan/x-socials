@@ -1,12 +1,14 @@
 import type { SchemaDefinition } from 'mongoose';
 
 export const postMongoSchema: SchemaDefinition = {
-    title: { type: String, required: true, trim: true },
-    content: { type: String, required: true },
-    authorId: { type: String, required: true },
-    tags: { type: [String], default: [] },
-    likesCount: { type: Number, default: 0, min: 0 },
-    deletedAt: { type: Date, default: null },
+    title:          { type: String, required: true, trim: true },
+    content:        { type: String, required: true },
+    authorId:       { type: String, required: true },
+    tags:           { type: [String], default: [] },
+    likesCount:     { type: Number, default: 0, min: 0 },
+    // Soft-delete — admin removes set this rather than dropping the document.
+    // All read queries filter { deletedAt: null } by default.
+    deletedAt:      { type: Date, default: null },
     deletionReason: { type: String, default: null },  // 'admin_removed' | 'author_deleted'
 };
 
@@ -29,9 +31,5 @@ export const postSchemaIndexes = [
     {
         fields: { tags: 1 },
         options: { name: 'idx_posts_tags' },
-    },
-    {
-        fields: { createdAt: 1, deletedAt: 1 },
-        options: { name: 'idx_posts_created_at_deleted_at' },
     },
 ] as const;

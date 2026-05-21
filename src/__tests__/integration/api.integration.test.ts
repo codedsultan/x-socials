@@ -73,10 +73,14 @@ function makeFakeDb(): import('../../database/initializer').DatabaseInitializer 
             { id: 'u1', email: 'alice@example.com', name: 'Alice' },
             { id: 'u2', email: 'bob@example.com', name: 'Bob' },
         ]),
-        findById: vi.fn(),
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
+        findById:  vi.fn().mockResolvedValue(null),
+        findByIds: vi.fn().mockResolvedValue([]),
+        create:    vi.fn(),
+        update:    vi.fn(),
+        delete:    vi.fn(),
+        exists:    vi.fn().mockResolvedValue(false),
+        findOne:   vi.fn().mockResolvedValue(null),
+        count:     vi.fn().mockResolvedValue(2),
     };
 
     // Create a mock factory that returns the repository

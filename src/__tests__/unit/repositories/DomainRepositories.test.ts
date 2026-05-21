@@ -16,7 +16,6 @@ function makeAdapter(): IDatabaseAdapter {
         create: vi.fn().mockResolvedValue({ id: '1' }),
         update: vi.fn().mockResolvedValue({ id: '1' }),
         delete: vi.fn().mockResolvedValue(true),
-        count: vi.fn().mockResolvedValue(0),
         withTransaction: vi.fn(),
         getClient: vi.fn()
     };
@@ -60,18 +59,18 @@ describe('PostRepository', () => {
     it('findByAuthor calls findMany with { authorId }', async () => {
         vi.mocked(adapter.findMany).mockResolvedValue([{ id: '1', authorId: 'u1' }]);
         const results = await repo.findByAuthor('u1');
-        expect(adapter.findMany).toHaveBeenCalledWith('Post', { authorId: 'u1' }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Post', { deletedAt: null, authorId: 'u1' }, undefined);
         expect(results).toHaveLength(1);
     });
 
     it('findByAuthor passes options through', async () => {
         await repo.findByAuthor('u1', { limit: 5 });
-        expect(adapter.findMany).toHaveBeenCalledWith('Post', { authorId: 'u1' }, { limit: 5 });
+        expect(adapter.findMany).toHaveBeenCalledWith('Post', { deletedAt: null, authorId: 'u1' }, { limit: 5 });
     });
 
     it('findByTag calls findMany with scalar tag (Mongoose array-element match)', async () => {
         await repo.findByTag('typescript');
-        expect(adapter.findMany).toHaveBeenCalledWith('Post', { tags: 'typescript' }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Post', { deletedAt: null, tags: 'typescript' }, undefined);
     });
 
     it('incrementLikes uses likesCountIncrement on SQL adapters (no models property)', async () => {
@@ -91,17 +90,17 @@ describe('CommentRepository', () => {
 
     it('findByPost calls findMany with { postId }', async () => {
         await repo.findByPost('post-1');
-        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { postId: 'post-1' }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { deletedAt: null, postId: 'post-1' }, undefined);
     });
 
     it('findByPost passes options through', async () => {
         await repo.findByPost('post-1', { limit: 10 });
-        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { postId: 'post-1' }, { limit: 10 });
+        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { deletedAt: null, postId: 'post-1' }, { limit: 10 });
     });
 
     it('findReplies calls findMany with { parentId }', async () => {
         await repo.findReplies('comment-1');
-        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { parentId: 'comment-1' }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { deletedAt: null, parentId: 'comment-1' }, undefined);
     });
 });
 

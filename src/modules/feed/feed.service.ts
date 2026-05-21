@@ -1,4 +1,3 @@
-// src/modules/feed/feed.service.ts
 import type { RepositoryFactory } from '../../factories/RepositoryFactory';
 import type { PostRepository } from '../../repositories/PostRepository';
 import type { LikeRepository } from '../../repositories/LikeRepository';
@@ -30,8 +29,13 @@ export class FeedService {
     return this.repoFactory.getRepository<any>('Follow') as FollowRepository;
   }
 
-  constructor(private readonly repoFactory: RepositoryFactory) { }
+  constructor(private readonly repoFactory: RepositoryFactory) {}
 
+  /**
+   * Home feed — cursor-paginated, newest first.
+   * Authenticated: posts from followed authors (falls back to global when following nobody).
+   * Unauthenticated: global feed.
+   */
   async getHomeFeed(options: FeedOptions): Promise<PagedResult<FeedItem>> {
     const { limit, cursor, viewerUserId } = options;
     const after = cursor ? (decodeCursor(cursor) ?? undefined) : undefined;
@@ -42,10 +46,11 @@ export class FeedService {
       const followingIds = await this.followRepo.getFollowingIds(viewerUserId);
 
       if (followingIds.length > 0) {
-        // Single $in query — replaces N parallel findByAuthor calls
+        // Single query for all followed authors' posts (authorId $in followingIds)
+        // instead of N parallel findByAuthor calls.
         rawPosts = (await this.postRepo.findByAuthorIds(followingIds, {
-          limit: limit + 1,
-          sort: { createdAt: -1 } as Record<string, 1 | -1>,
+          limit:       limit + 1,
+          sort:        { createdAt: -1 } as Record<string, 1 | -1>,
           after,
           cursorField: 'id',
         })) as PostResponse[];
@@ -65,25 +70,28 @@ export class FeedService {
     const page = buildCursorPage(rawPosts, limit, 'id');
     return {
       items: await this.attachLikedByMe(page.items, viewerUserId),
-      meta: page.meta,
+      meta:  page.meta,
     };
   }
 
+  /**
+   * Posts by a specific author — cursor-paginated, newest first.
+   */
   async getUserFeed(authorId: string, options: FeedOptions): Promise<PagedResult<FeedItem>> {
     const { limit, cursor, viewerUserId } = options;
     const after = cursor ? (decodeCursor(cursor) ?? undefined) : undefined;
 
     const raw = await this.postRepo.findByAuthor(authorId, {
-      limit: limit + 1,
+      limit:      limit + 1,
       after,
       cursorField: 'id',
-      sort: { createdAt: -1 },
+      sort:       { createdAt: -1 },
     }) as PostResponse[];
 
     const page = buildCursorPage(raw, limit, 'id');
     return {
       items: await this.attachLikedByMe(page.items, viewerUserId),
-      meta: page.meta,
+      meta:  page.meta,
     };
   }
 

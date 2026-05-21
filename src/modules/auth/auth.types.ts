@@ -1,11 +1,11 @@
 export interface RegisterDto {
-  name: string;
-  email: string;
+  name:     string;
+  email:    string;
   password: string;
 }
 
 export interface LoginDto {
-  email: string;
+  email:    string;
   password: string;
 }
 
@@ -14,16 +14,16 @@ export interface RefreshTokenDto {
 }
 
 export interface AuthTokens {
-  accessToken: string;
+  accessToken:  string;
   refreshToken: string;
-  expiresIn: number;
+  expiresIn:    number;
 }
 
 export interface AuthResponse {
   user: {
-    id: string;
-    name: string | undefined;
-    email: string;
+    id:        string;
+    name:      string | undefined;
+    email:     string;
     createdAt?: Date;
   };
   tokens: AuthTokens;

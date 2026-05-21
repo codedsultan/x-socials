@@ -1,7 +1,7 @@
-import type { RepositoryFactory } from '../../factories/RepositoryFactory';
+import type { RepositoryFactory }      from '../../factories/RepositoryFactory';
 import type { NotificationRepository } from '../../repositories/NotificationRepository';
-import { buildKeysetPage } from '../../shared/helpers/paginate';
-import type { PagedResult } from '../../shared/helpers/paginate';
+import { buildKeysetPage }             from '../../shared/helpers/paginate';
+import type { PagedResult }            from '../../shared/helpers/paginate';
 import type { NotificationResponse } from './notifications.types';
 
 export class NotificationsService {
@@ -9,7 +9,7 @@ export class NotificationsService {
     return this.repoFactory.getRepository<any>('Notification') as NotificationRepository;
   }
 
-  constructor(private readonly repoFactory: RepositoryFactory) { }
+  constructor(private readonly repoFactory: RepositoryFactory) {}
 
   /** Keyset-paginated list for the authenticated user. */
   async list(
@@ -17,8 +17,8 @@ export class NotificationsService {
     opts: { limit: number; after?: string; unreadOnly?: boolean }
   ): Promise<PagedResult<NotificationResponse>> {
     const raw = await this.notifRepo.listForUser(userId, {
-      limit: opts.limit + 1,
-      after: opts.after,
+      limit:      opts.limit + 1,
+      after:      opts.after,
       unreadOnly: opts.unreadOnly,
     });
 
@@ -51,7 +51,7 @@ export class NotificationDispatcher {
     return this.repoFactory.getRepository<any>('Notification') as NotificationRepository;
   }
 
-  constructor(private readonly repoFactory: RepositoryFactory) { }
+  constructor(private readonly repoFactory: RepositoryFactory) {}
 
   async onLikePost(actorId: string, postAuthorId: string, postId: string) {
     await this.notifRepo.notify(postAuthorId, actorId, 'like_post', postId);
@@ -71,5 +71,11 @@ export class NotificationDispatcher {
 
   async onReply(actorId: string, parentCommentAuthorId: string, commentId: string) {
     await this.notifRepo.notify(parentCommentAuthorId, actorId, 'reply', commentId);
+  }
+
+  async onContentRemoved(authorId: string, contentId: string) {
+    // Use a system sentinel as actorId so the self-notification check in
+    // NotificationRepository.notify() doesn't suppress this notification.
+    await this.notifRepo.notify(authorId, 'system', 'content_removed', contentId);
   }
 }

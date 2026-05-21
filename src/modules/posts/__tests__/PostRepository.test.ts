@@ -83,7 +83,7 @@ describe('PostRepository', () => {
 
       expect(adapter.findMany).toHaveBeenCalledWith(
         'Post',
-        { authorId: 'user-42' },
+        { deletedAt: null, authorId: 'user-42' },
         { limit: 10, skip: 0 }
       );
     });

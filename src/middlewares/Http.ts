@@ -28,7 +28,19 @@ class Http {
 
     // Parse bodies — express 5 ships built-in json/urlencoded via body-parser;
     // registering body-parser separately would double-read the stream.
-    _express.use(json({ limit: "100mb" }));
+    //
+    // The verify callback captures the raw body buffer before it is parsed.
+    // requireAdminKey reads req.rawBody to compute the HMAC body hash; without
+    // this, req.rawBody is undefined and the signature check fails on any
+    // admin request that carries a body (POST / PATCH / PUT).
+    _express.use(
+      json({
+        limit: "100mb",
+        verify: (req: Request, _res: Response, buf: Buffer) => {
+          (req as any).rawBody = buf.toString("utf8");
+        },
+      })
+    );
     _express.use(urlencoded({ extended: true, limit: "100mb" }));
 
     // Trust proxy (for reverse proxies / load balancers)
