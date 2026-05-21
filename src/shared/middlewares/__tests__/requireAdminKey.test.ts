@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { requireAdminKey, buildCanonicalString, computeHmac } from '../authenticate';
 
