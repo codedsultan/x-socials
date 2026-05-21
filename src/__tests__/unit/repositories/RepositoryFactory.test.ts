@@ -16,7 +16,7 @@ function makeMockAdapter(): IDatabaseAdapter {
         registerModel: vi.fn(), migrate: vi.fn(),
         findOne: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn(), update: vi.fn(), delete: vi.fn(), withTransaction: vi.fn(),
-        getClient: vi.fn()
+        getClient: vi.fn(), count: vi.fn().mockResolvedValue(0)
     };
 }
 
