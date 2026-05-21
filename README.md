@@ -461,6 +461,14 @@ All SQL models automatically use the configured database - no code changes requi
 4. Push to the branch: `git push origin feature/your-feature`
 5. Open a Pull Request
 
+## Related services
+
+| Service | Role |
+|---|---|
+| [x-socials-web](https://github.com/codedsultan/x-socials-web) | Next.js 16 frontend for the x-socials API  |
+| [x-socials-admin](https://github.com/codedsultan/x-socials-admin) | Laravel admin panel — review queue, dashboard, auto-remove |
+| [x-socials-moderator](https://github.com/codedsultan/x-socials-ai-moderator) | FastAPI AI engine — analyses content, writes results |
+
 ---
 
 ## License
