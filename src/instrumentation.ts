@@ -32,11 +32,15 @@ const sdk = new NodeSDK({
                 },
                 requireParentforOutgoingSpans: true,
             },
-            // Only enable Express layer tracing when full traces are requested.
-            // Without this guard it adds 2+ finish listeners per request even
-            // when traces are disabled, pushing ServerResponse past the default
-            // 10-listener limit when combined with compression + morgan + monitoring.
+            // Only enable Express/router layer tracing when full traces are requested.
+            // Both instrumentations call res.prependOnceListener('finish') per matched
+            // layer. With ~20 middleware layers in the stack, leaving either enabled in
+            // non-trace mode pushes ServerResponse well past Node's default listener
+            // limit and causes MaxListenersExceededWarning.
             '@opentelemetry/instrumentation-express': {
+                enabled: enableTraces,
+            },
+            '@opentelemetry/instrumentation-router': {
                 enabled: enableTraces,
             },
             '@opentelemetry/instrumentation-fs': { enabled: false },
