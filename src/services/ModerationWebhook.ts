@@ -26,23 +26,23 @@ import Logger from '../logger';
 const logger = Logger.getInstance();
 
 interface EnqueuePayload {
-    id:           string;
-    content:      string;
-    authorId:     string;
+    id: string;
+    content: string;
+    authorId: string;
     content_type: 'post' | 'comment';
-    post_id?:     string;   // required when content_type='comment'
+    post_id?: string;   // required when content_type='comment'
 }
 
 export class ModerationWebhook {
-    private readonly baseUrl:    string;
-    private readonly apiKey:     string;
-    private readonly enabled:    boolean;
-    private readonly timeoutMs:  number;
+    private readonly baseUrl: string;
+    private readonly apiKey: string;
+    private readonly enabled: boolean;
+    private readonly timeoutMs: number;
 
     constructor() {
-        this.baseUrl   = (process.env['MODERATOR_URL'] ?? 'http://localhost:8001').replace(/\/$/, '');
-        this.apiKey    = process.env['MODERATOR_API_KEY'] ?? '';
-        this.enabled   = process.env['MODERATOR_WEBHOOK_ENABLED'] !== 'false';
+        this.baseUrl = (process.env['MODERATOR_URL'] ?? 'http://localhost:8001').replace(/\/$/, '');
+        this.apiKey = process.env['MODERATOR_API_KEY'] ?? '';
+        this.enabled = process.env['MODERATOR_WEBHOOK_ENABLED'] !== 'false';
         this.timeoutMs = Number(process.env['MODERATOR_WEBHOOK_TIMEOUT_MS'] ?? 200);
     }
 
@@ -51,16 +51,16 @@ export class ModerationWebhook {
      * Called after successful post creation or update.
      */
     async enqueuePost(post: {
-        id:       string;
-        title:    string;
-        content:  string;
+        id: string;
+        title: string;
+        content: string;
         authorId: string;
     }): Promise<void> {
         await this._send({
-            id:           post.id,
+            id: post.id,
             // Mirror the text format ScanService uses so the AI sees consistent input
-            content:      `Title: ${post.title}\n\nBody:\n${post.content}`.trim(),
-            authorId:     post.authorId,
+            content: `Title: ${post.title}\n\nBody:\n${post.content}`.trim(),
+            authorId: post.authorId,
             content_type: 'post',
         });
     }
@@ -70,17 +70,17 @@ export class ModerationWebhook {
      * Called after successful comment creation or update.
      */
     async enqueueComment(comment: {
-        id:       string;
-        content:  string;
+        id: string;
+        content: string;
         authorId: string;
-        postId:   string;
+        postId: string;
     }): Promise<void> {
         await this._send({
-            id:           comment.id,
-            content:      comment.content,
-            authorId:     comment.authorId,
+            id: comment.id,
+            content: comment.content,
+            authorId: comment.authorId,
             content_type: 'comment',
-            post_id:      comment.postId,
+            post_id: comment.postId,
         });
     }
 
@@ -98,8 +98,8 @@ export class ModerationWebhook {
             const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
             const res = await fetch(url, {
-                method:  'POST',
-                signal:  controller.signal,
+                method: 'POST',
+                signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     ...(this.apiKey ? { 'X-Api-Key': this.apiKey } : {}),
@@ -112,13 +112,14 @@ export class ModerationWebhook {
             if (!res.ok) {
                 // Log non-2xx but don't throw — reconciliation scan will catch this
                 logger.warn('ModerationWebhook: FastAPI returned non-2xx', {
-                    status:       res.status,
-                    content_id:   payload.id,
+                    status: res.status,
+                    content_id: payload.id,
                     content_type: payload.content_type,
+
                 });
             } else {
                 logger.debug('ModerationWebhook: enqueued', {
-                    content_id:   payload.id,
+                    content_id: payload.id,
                     content_type: payload.content_type,
                 });
             }
@@ -126,9 +127,12 @@ export class ModerationWebhook {
             // AbortError = timeout; any other error = FastAPI down / DNS failure
             const isTimeout = err instanceof Error && err.name === 'AbortError';
             logger.warn('ModerationWebhook: delivery failed (reconciliation scan will cover)', {
-                reason:       isTimeout ? 'timeout' : String(err),
-                content_id:   payload.id,
+                reason: isTimeout ? 'timeout' : String(err),
+                content_id: payload.id,
                 content_type: payload.content_type,
+                url: url,
+                apiKey: this.apiKey
+
             });
         }
     }

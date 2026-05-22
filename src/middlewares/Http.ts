@@ -12,11 +12,12 @@ class Http {
   public static mount(_express: Application): Application {
     Logger.getInstance().info("App :: Registering HTTP middleware...");
 
-    // compression (via on-finished) + morgan + monitoring + otel-http each add
-    // finish listeners to ServerResponse. Raise the per-response limit before
-    // any other middleware runs so Node never fires MaxListenersExceededWarning.
+    // Several layers add 'finish' listeners to ServerResponse: compression,
+    // morgan, monitoring, otel-http, and (when tracing is on) otel-router adds
+    // one per matched layer. Set a generous ceiling so Node never fires
+    // MaxListenersExceededWarning regardless of how deep the middleware stack grows.
     _express.use((_req: Request, res: Response, next: NextFunction) => {
-      res.setMaxListeners(20);
+      res.setMaxListeners(50);
       next();
     });
 
