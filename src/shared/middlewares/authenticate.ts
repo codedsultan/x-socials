@@ -155,23 +155,71 @@ function safeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf) && a.length === b.length;
 }
 
+// export function requireAdminKey(req: Request, _res: Response, next: NextFunction): void {
+//   const primaryKey = process.env['ADMIN_API_KEY'];
+//   const rotationKey = process.env['ADMIN_API_KEY_NEXT']; // optional — present during rotation
+
+//   if (!primaryKey) {
+//     return next(ApiError.internal('ADMIN_API_KEY is not configured'));
+//   }
+
+//   // ── 1. Read headers ──────────────────────────────────────────────────────
+//   const providedSig = req.headers['x-admin-signature'] as string | undefined;
+//   const timestamp = req.headers['x-admin-timestamp'] as string | undefined;
+
+//   if (!providedSig || !timestamp) {
+//     return next(ApiError.forbidden('Missing X-Admin-Signature or X-Admin-Timestamp header'));
+//   }
+
+//   // ── 2. Validate timestamp (replay window) ─────────────────────────────────
+//   const ts = parseInt(timestamp, 10);
+//   const now = Math.floor(Date.now() / 1000);
+
+//   if (isNaN(ts) || Math.abs(now - ts) > TIMESTAMP_TOLERANCE_S) {
+//     return next(ApiError.forbidden('Request timestamp is outside the acceptable window'));
+//   }
+
+//   // ── 3. Build canonical string and compute expected signature ──────────────
+//   const rawBody = (req as any).rawBody ?? '';   // populated by express.json verify callback
+//   const canonical = buildCanonicalString(req.method, req.path, timestamp, rawBody);
+
+//   const expectedPrimary = computeHmac(primaryKey, canonical);
+//   const expectedRotation = rotationKey ? computeHmac(rotationKey, canonical) : null;
+
+//   const validPrimary = safeEqual(providedSig, expectedPrimary);
+//   const validRotation = expectedRotation ? safeEqual(providedSig, expectedRotation) : false;
+
+//   if (!validPrimary && !validRotation) {
+//     return next(ApiError.forbidden('Invalid admin request signature'));
+//   }
+
+//   // ── 4. Replay protection — reject if this exact signature has been seen ───
+//   const replayKey = `${timestamp}:${providedSig}`;
+//   if (usedSignatures.has(replayKey)) {
+//     return next(ApiError.forbidden('Replayed request rejected'));
+//   }
+//   usedSignatures.set(replayKey, ts);
+
+//   next();
+// }
+
+// Update the interface to include nonce
 export function requireAdminKey(req: Request, _res: Response, next: NextFunction): void {
   const primaryKey = process.env['ADMIN_API_KEY'];
-  const rotationKey = process.env['ADMIN_API_KEY_NEXT']; // optional — present during rotation
+  const rotationKey = process.env['ADMIN_API_KEY_NEXT'];
 
   if (!primaryKey) {
     return next(ApiError.internal('ADMIN_API_KEY is not configured'));
   }
 
-  // ── 1. Read headers ──────────────────────────────────────────────────────
   const providedSig = req.headers['x-admin-signature'] as string | undefined;
   const timestamp = req.headers['x-admin-timestamp'] as string | undefined;
+  const nonce = req.headers['x-admin-nonce'] as string | undefined; // NEW
 
   if (!providedSig || !timestamp) {
     return next(ApiError.forbidden('Missing X-Admin-Signature or X-Admin-Timestamp header'));
   }
 
-  // ── 2. Validate timestamp (replay window) ─────────────────────────────────
   const ts = parseInt(timestamp, 10);
   const now = Math.floor(Date.now() / 1000);
 
@@ -179,9 +227,15 @@ export function requireAdminKey(req: Request, _res: Response, next: NextFunction
     return next(ApiError.forbidden('Request timestamp is outside the acceptable window'));
   }
 
-  // ── 3. Build canonical string and compute expected signature ──────────────
-  const rawBody = (req as any).rawBody ?? '';   // populated by express.json verify callback
-  const canonical = buildCanonicalString(req.method, req.path, timestamp, rawBody);
+  const rawBody = (req as any).rawBody ?? '';
+
+  // MODIFIED: Include nonce in canonical string
+  let canonical: string;
+  if (nonce) {
+    canonical = buildCanonicalStringWithNonce(req.method, req.path, timestamp, nonce, rawBody);
+  } else {
+    canonical = buildCanonicalString(req.method, req.path, timestamp, rawBody);
+  }
 
   const expectedPrimary = computeHmac(primaryKey, canonical);
   const expectedRotation = rotationKey ? computeHmac(rotationKey, canonical) : null;
@@ -193,14 +247,26 @@ export function requireAdminKey(req: Request, _res: Response, next: NextFunction
     return next(ApiError.forbidden('Invalid admin request signature'));
   }
 
-  // ── 4. Replay protection — reject if this exact signature has been seen ───
-  const replayKey = `${timestamp}:${providedSig}`;
+  // REPLAY PROTECTION: Now includes nonce or is unique per request
+  const replayKey = nonce ? `${timestamp}:${nonce}` : `${timestamp}:${providedSig}`;
   if (usedSignatures.has(replayKey)) {
     return next(ApiError.forbidden('Replayed request rejected'));
   }
   usedSignatures.set(replayKey, ts);
 
   next();
+}
+
+// Add new helper function
+function buildCanonicalStringWithNonce(
+  method: string,
+  path: string,
+  timestamp: string,
+  nonce: string,
+  rawBody: string,
+): string {
+  const bodyHash = crypto.createHash('sha256').update(rawBody).digest('hex');
+  return `${method.toUpperCase()}\n${path}\n${timestamp}\n${nonce}\n${bodyHash}`;
 }
 
 /** Exported for testing — allows callers to sign a request the same way. */
