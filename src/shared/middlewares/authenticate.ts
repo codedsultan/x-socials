@@ -6,10 +6,10 @@ import ConfigService from '../../config/config.service';
 import type { ICurrentUser } from '../types/express';
 
 interface JwtPayload {
-  sub:   string;
+  sub: string;
   email: string;
-  iat?:  number;
-  exp?:  number;
+  iat?: number;
+  exp?: number;
 }
 
 // ─── User JWT authentication ───────────────────────────────────────────────────
@@ -30,7 +30,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     const payload = jwt.verify(token, secret) as JwtPayload;
 
     (req as any).currentUser = {
-      id:    payload.sub,
+      id: payload.sub,
       email: payload.email,
     } satisfies ICurrentUser;
 
@@ -53,7 +53,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     }
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) return next(ApiError.unauthorized('Token has expired'));
-    if (err instanceof jwt.JsonWebTokenError)  return next(ApiError.unauthorized('Invalid token'));
+    if (err instanceof jwt.JsonWebTokenError) return next(ApiError.unauthorized('Invalid token'));
     next(err);
   }
 }
@@ -63,8 +63,8 @@ export function optionalAuthenticate(req: Request, _res: Response, next: NextFun
   if (!header || !header.startsWith('Bearer ')) return next();
 
   try {
-    const token   = header.slice(7).trim();
-    const secret  = ConfigService.getServerConfig().JWT_SECRET;
+    const token = header.slice(7).trim();
+    const secret = ConfigService.getServerConfig().JWT_SECRET;
     if (!secret) return next();
 
     const payload = jwt.verify(token, secret) as JwtPayload;
@@ -134,10 +134,10 @@ setInterval(() => {
 }, 60_000).unref();
 
 function buildCanonicalString(
-  method:    string,
-  path:      string,
+  method: string,
+  path: string,
   timestamp: string,
-  rawBody:   string,
+  rawBody: string,
 ): string {
   const bodyHash = crypto.createHash('sha256').update(rawBody).digest('hex');
   return `${method.toUpperCase()}\n${path}\n${timestamp}\n${bodyHash}`;
@@ -156,7 +156,7 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 export function requireAdminKey(req: Request, _res: Response, next: NextFunction): void {
-  const primaryKey  = process.env['ADMIN_API_KEY'];
+  const primaryKey = process.env['ADMIN_API_KEY'];
   const rotationKey = process.env['ADMIN_API_KEY_NEXT']; // optional — present during rotation
 
   if (!primaryKey) {
@@ -165,14 +165,14 @@ export function requireAdminKey(req: Request, _res: Response, next: NextFunction
 
   // ── 1. Read headers ──────────────────────────────────────────────────────
   const providedSig = req.headers['x-admin-signature'] as string | undefined;
-  const timestamp   = req.headers['x-admin-timestamp']  as string | undefined;
+  const timestamp = req.headers['x-admin-timestamp'] as string | undefined;
 
   if (!providedSig || !timestamp) {
     return next(ApiError.forbidden('Missing X-Admin-Signature or X-Admin-Timestamp header'));
   }
 
   // ── 2. Validate timestamp (replay window) ─────────────────────────────────
-  const ts  = parseInt(timestamp, 10);
+  const ts = parseInt(timestamp, 10);
   const now = Math.floor(Date.now() / 1000);
 
   if (isNaN(ts) || Math.abs(now - ts) > TIMESTAMP_TOLERANCE_S) {
@@ -180,14 +180,14 @@ export function requireAdminKey(req: Request, _res: Response, next: NextFunction
   }
 
   // ── 3. Build canonical string and compute expected signature ──────────────
-  const rawBody  = (req as any).rawBody ?? '';   // populated by express.json verify callback
+  const rawBody = (req as any).rawBody ?? '';   // populated by express.json verify callback
   const canonical = buildCanonicalString(req.method, req.path, timestamp, rawBody);
 
-  const expectedPrimary  = computeHmac(primaryKey,  canonical);
+  const expectedPrimary = computeHmac(primaryKey, canonical);
   const expectedRotation = rotationKey ? computeHmac(rotationKey, canonical) : null;
 
-  const validPrimary   = safeEqual(providedSig, expectedPrimary);
-  const validRotation  = expectedRotation ? safeEqual(providedSig, expectedRotation) : false;
+  const validPrimary = safeEqual(providedSig, expectedPrimary);
+  const validRotation = expectedRotation ? safeEqual(providedSig, expectedRotation) : false;
 
   if (!validPrimary && !validRotation) {
     return next(ApiError.forbidden('Invalid admin request signature'));

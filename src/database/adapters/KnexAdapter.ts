@@ -25,7 +25,7 @@ const NO_RETURNING_CLIENTS = new Set(['mysql', 'mysql2', 'sqlite3', 'better-sqli
  * KnexAdapter.create() skips the updated_at injection for these models.
  * KnexAdapter.update() (called on these models) also skips it.
  */
-const NO_UPDATED_AT_MODELS = new Set(['Token', 'Otp', 'Follow']);
+const NO_UPDATED_AT_MODELS = new Set(['Token', 'Otp', 'Follow', 'Notification']);
 
 export class KnexAdapter implements IDatabaseAdapter {
     private readonly db: Knex;
