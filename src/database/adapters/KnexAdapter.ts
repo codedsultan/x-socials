@@ -206,7 +206,9 @@ export class KnexAdapter implements IDatabaseAdapter {
     private toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
         const result: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(obj)) {
-            result[key.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`)] = value;
+            const snakeKey = key.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
+            // _id is MongoDB's PK convention; SQL tables use 'id'
+            result[snakeKey === '_id' ? 'id' : snakeKey] = value;
         }
         return result;
     }
