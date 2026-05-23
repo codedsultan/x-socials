@@ -8,7 +8,7 @@ export class BaseRepository<T> implements IRepository<T> {
     ) {}
 
     async findById(id: string): Promise<T | null> {
-        return this.adapter.findOne(this.modelName, { _id: id }) as Promise<T | null>;
+        return this.adapter.findOne(this.modelName, { id }) as Promise<T | null>;
     }
 
     async findOne(filter: Partial<T>): Promise<T | null> {

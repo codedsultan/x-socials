@@ -84,7 +84,9 @@ export class MongooseAdapter implements IDatabaseAdapter {
     }
 
     async findOne(model: string, filter: Record<string, unknown>): Promise<unknown> {
-        const doc = await this.getModel(model).findOne(filter).lean();
+        const { id, ...rest } = filter;
+        const mongoFilter = id !== undefined ? { _id: id, ...rest } : rest;
+        const doc = await this.getModel(model).findOne(mongoFilter).lean();
         if (!doc) return null;
 
         // Convert _id to id
