@@ -3,10 +3,22 @@ import jwt from 'jsonwebtoken';
 import type { RepositoryFactory } from '../../factories/RepositoryFactory';
 import type { UserRepository } from '../../repositories/UserRepository';
 import type { TokenRepository } from '../../repositories/TokenRepository';
+import type { OtpRepository } from '../../repositories/OtpRepository';
 import { ApiError } from '../../shared/errors/ApiError';
 import ConfigService from '../../config/config.service';
 import { generateUid } from '../../utils/uuid';
-import type { RegisterDto, LoginDto, AuthResponse, AuthTokens } from './auth.types';
+import { OtpService } from '../../services/otp/OtpService';
+import { getEmailService, type EmailService } from '../../services/email/EmailService';
+import { OTP_TTL_MINUTES } from '../../services/email/templates/partials/otp-block.partial';
+import type {
+  RegisterDto,
+  LoginDto,
+  AuthResponse,
+  AuthTokens,
+  RequestOtpDto,
+  VerifyOtpDto,
+  ResetPasswordDto,
+} from './auth.types';
 
 const BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_TTL_DAYS = 30;
@@ -20,7 +32,16 @@ export class AuthService {
     return this.repoFactory.getRepository<any>('Token') as TokenRepository;
   }
 
-  constructor(private readonly repoFactory: RepositoryFactory) {}
+  private get otpRepo(): OtpRepository {
+    return this.repoFactory.getRepository<any>('Otp') as OtpRepository;
+  }
+
+  constructor(
+    private readonly repoFactory: RepositoryFactory,
+    private readonly emailService: EmailService = getEmailService(),
+  ) { }
+
+  // ─── Register / Login ────────────────────────────────────────────────────
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
     const exists = await this.userRepo.emailExists(dto.email);
@@ -37,6 +58,9 @@ export class AuthService {
     });
 
     const tokens = await this.issueTokens(user.id, user.email);
+
+    // Fire-and-forget: send email verification OTP after registration.
+    this.sendEmailVerificationOtp(user.id, user.email).catch(() => { });
 
     return {
       user: { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt },
@@ -63,6 +87,8 @@ export class AuthService {
     };
   }
 
+  // ─── Token rotation ──────────────────────────────────────────────────────
+
   async refreshTokens(rawRefreshToken: string): Promise<AuthTokens> {
     const stored = await this.tokenRepo.findByValue(rawRefreshToken);
     if (!stored || stored.type !== 'refresh') {
@@ -74,7 +100,6 @@ export class AuthService {
       throw ApiError.unauthorized('Refresh token has expired, please log in again');
     }
 
-    // Rotate: revoke the old token and issue fresh pair
     await this.tokenRepo.delete(stored.id);
 
     const { secret } = this.getJwtConfig();
@@ -92,7 +117,64 @@ export class AuthService {
     await this.tokenRepo.revokeAllForUser(userId);
   }
 
-  // ─── Private helpers ───────────────────────────────────────────────────────
+  // ─── Email verification ──────────────────────────────────────────────────
+
+  async requestEmailVerification(userId: string): Promise<void> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) throw ApiError.notFound('User not found');
+    await this.sendEmailVerificationOtp(userId, user.email);
+  }
+
+  async verifyEmail(dto: VerifyOtpDto): Promise<void> {
+    const user = await this.userRepo.findById(dto.userId);
+    if (!user) throw ApiError.notFound('User not found');
+
+    const otpService = new OtpService(this.otpRepo);
+    await otpService.verify(dto.userId, dto.code, 'email_verification');
+
+    await this.userRepo.update(dto.userId, { emailVerifiedAt: new Date() } as any);
+  }
+
+  // ─── Password reset ──────────────────────────────────────────────────────
+
+  async requestPasswordReset(dto: RequestOtpDto): Promise<void> {
+    const user = await this.userRepo.findByEmail(dto.email);
+    if (!user) return; // silent — don't reveal whether the email exists
+
+    const otpService = new OtpService(this.otpRepo);
+    const code = await otpService.issue(user.id, 'password_reset');
+
+    await this.emailService.sendTemplate('password_reset', user.email, {
+      code,
+      expiryMinutes: OTP_TTL_MINUTES,
+      userName: user.name ?? undefined,
+    });
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<void> {
+    const user = await this.userRepo.findByEmail(dto.email);
+    if (!user) throw ApiError.badRequest('Invalid or expired verification code');
+
+    const otpService = new OtpService(this.otpRepo);
+    await otpService.verify(user.id, dto.code, 'password_reset');
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.userRepo.update(user.id, { passwordHash } as any);
+
+    await this.tokenRepo.revokeAllForUser(user.id);
+  }
+
+  // ─── Private helpers ─────────────────────────────────────────────────────
+
+  private async sendEmailVerificationOtp(userId: string, email: string): Promise<void> {
+    const otpService = new OtpService(this.otpRepo);
+    const code = await otpService.issue(userId, 'email_verification');
+
+    await this.emailService.sendTemplate('email_verification', email, {
+      code,
+      expiryMinutes: OTP_TTL_MINUTES,
+    });
+  }
 
   private async issueTokens(userId: string, email: string): Promise<AuthTokens> {
     const { secret, expiresIn } = this.getJwtConfig();
@@ -110,9 +192,7 @@ export class AuthService {
       expiresAt,
     });
 
-    // Parse expiresIn string to seconds for the client
     const expiresInSeconds = this.parseExpiresIn(expiresIn);
-
     return { accessToken, refreshToken: rawRefreshToken, expiresIn: expiresInSeconds };
   }
 
