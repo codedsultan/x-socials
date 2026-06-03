@@ -39,14 +39,14 @@ function getModelMapping(): ModelDbMapping {
     const sqlDb = getPrimarySqlDb();
 
     return {
-        User:         sqlDb,
-        Otp:          sqlDb,
-        Token:        sqlDb,
-        Follow:       sqlDb,
+        User: sqlDb,
+        Otp: sqlDb,
+        Token: sqlDb,
+        Follow: sqlDb,
         Notification: sqlDb,
-        Post:         'mongodb',
-        Comment:      'mongodb',
-        Like:         'mongodb',
+        Post: 'mongodb',
+        Comment: 'mongodb',
+        Like: 'mongodb',
     };
 }
 
@@ -233,7 +233,10 @@ export class ConfigService {
             LOG_DAYS: this.getLogDaysFromEnv(),
             JWT_SECRET: this.getRequiredEnvVar("JWT_SECRET", this.isProductionEnv()),
             JWT_EXPIRES_IN: process.env["JWT_EXPIRES_IN"] || "7d",
-            SENDGRID_API_KEY: process.env["SENDGRID_API_KEY"],
+            SMTP_HOST: process.env["SMTP_HOST"],
+            SMTP_PORT: process.env["SMTP_PORT"],
+            SMTP_USER: process.env["SMTP_USER"],
+            SMTP_KEY: process.env["SMTP_KEY"],
             SMTP_FROM: process.env["SMTP_FROM"],
             CLOUDINARY_CLOUD_NAME: process.env["CLOUDINARY_CLOUD_NAME"],
             CLOUDINARY_API_KEY: process.env["CLOUDINARY_API_KEY"],
@@ -544,7 +547,8 @@ export class ConfigService {
     private logServerConfig(config: IEnvConfig): void {
         const safeConfig = { ...config };
         if (safeConfig.JWT_SECRET) safeConfig.JWT_SECRET = "***";
-        if (safeConfig.SENDGRID_API_KEY) safeConfig.SENDGRID_API_KEY = "***";
+        // if (safeConfig.SENDGRID_API_KEY) safeConfig.SENDGRID_API_KEY = "***";
+        if (safeConfig.SMTP_KEY) safeConfig.SMTP_KEY = "***";
         if (safeConfig.CLOUDINARY_API_SECRET) safeConfig.CLOUDINARY_API_SECRET = "***";
 
         this.logInfo(`Server config: port=${config.PORT}, env=${config.NODE_ENV}`);
