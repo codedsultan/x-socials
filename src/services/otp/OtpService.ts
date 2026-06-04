@@ -44,9 +44,11 @@ export class OtpService {
   }
 
   /**
-   * Verify a submitted code. Throws 400 if invalid/expired, marks used on success.
+   * Validate a submitted code without consuming it. Returns the OTP id on
+   * success so the caller can call consume() after its own work succeeds.
+   * Throws 400 if the code is invalid or expired.
    */
-  async verify(userId: string, code: string, purpose: OtpPurpose): Promise<void> {
+  async validate(userId: string, code: string, purpose: OtpPurpose): Promise<string> {
     const otp = await this.otpRepo.findValidOtp(userId, code, purpose);
 
     if (!otp) {
@@ -58,7 +60,21 @@ export class OtpService {
       throw ApiError.badRequest('Verification code has expired');
     }
 
-    await this.otpRepo.markUsed(otp.id);
+    return otp.id;
+  }
+
+  /** Mark the OTP as used. Call this only after the caller's own work succeeds. */
+  async consume(otpId: string): Promise<void> {
+    await this.otpRepo.markUsed(otpId);
+  }
+
+  /**
+   * Verify a submitted code and immediately consume it.
+   * Use only when there is no subsequent operation that could fail.
+   */
+  async verify(userId: string, code: string, purpose: OtpPurpose): Promise<void> {
+    const otpId = await this.validate(userId, code, purpose);
+    await this.otpRepo.markUsed(otpId);
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────

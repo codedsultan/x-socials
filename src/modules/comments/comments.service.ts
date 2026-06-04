@@ -1,32 +1,17 @@
-/**
- * comments.service.ts  (updated)
- *
- * Changes:
- *   After createComment() and updateComment() succeed, fire the moderation
- *   webhook as a non-blocking side effect. Same pattern as enqueuePost().
- *
- *   Note on updateComment: edited comments are re-enqueued because a user
- *   could post benign content, then edit it to contain a violation after the
- *   initial analysis. The FastAPI enqueue endpoint handles re-analysis
- *   correctly — the daily unique constraint only applies to the scan pipeline,
- *   not to the real-time enqueue path (which uses a separate trigger='realtime'
- *   value and always writes a fresh moderation_records row).
- */
-
-import type { RepositoryFactory }  from '../../factories/RepositoryFactory';
-import type { CommentRepository }  from '../../repositories/CommentRepository';
-import type { PostRepository }     from '../../repositories/PostRepository';
-import { ApiError }                from '../../shared/errors/ApiError';
-import { buildKeysetPage }         from '../../shared/helpers/paginate';
-import { moderationWebhook }       from '../../services/ModerationWebhook';
+import type { RepositoryFactory } from '../../factories/RepositoryFactory';
+import type { CommentRepository } from '../../repositories/CommentRepository';
+import type { PostRepository } from '../../repositories/PostRepository';
+import { ApiError } from '../../shared/errors/ApiError';
+import { buildKeysetPage } from '../../shared/helpers/paginate';
+import { moderationWebhook } from '../../services/ModerationWebhook';
 import type { CreateCommentDto, UpdateCommentDto, CommentResponse } from './comments.types';
-import { NotificationDispatcher }  from '../notifications/notifications.service';
-import type { PagedResult }        from '../../shared/helpers/paginate';
+import { NotificationDispatcher } from '../notifications/notifications.service';
+import type { PagedResult } from '../../shared/helpers/paginate';
 
 export interface ListCommentsParams {
-    after?:  string;
+    after?: string;
     before?: string;
-    limit:   number;
+    limit: number;
 }
 
 export class CommentsService {
@@ -42,7 +27,7 @@ export class CommentsService {
         return new NotificationDispatcher(this.repoFactory);
     }
 
-    constructor(private readonly repoFactory: RepositoryFactory) {}
+    constructor(private readonly repoFactory: RepositoryFactory) { }
 
     async listForPost(
         postId: string,
@@ -56,10 +41,10 @@ export class CommentsService {
         const raw = await this.commentRepo.findMany(
             { postId, parentId: null } as any,
             {
-                limit:  limit + 1,
+                limit: limit + 1,
                 after,
                 before,
-                sort:   { id: 1 } as Record<string, 1 | -1>,
+                sort: { id: 1 } as Record<string, 1 | -1>,
             }
         );
 
@@ -75,10 +60,10 @@ export class CommentsService {
         const raw = await this.commentRepo.findMany(
             { parentId } as any,
             {
-                limit:  limit + 1,
+                limit: limit + 1,
                 after,
                 before,
-                sort:   { id: 1 } as Record<string, 1 | -1>,
+                sort: { id: 1 } as Record<string, 1 | -1>,
             }
         );
 
@@ -100,29 +85,32 @@ export class CommentsService {
         const comment = await this.commentRepo.create({
             postId,
             authorId: actingUserId,
-            content:  dto.content,
+            content: dto.content,
             parentId: dto.parentId ?? null,
         }) as CommentResponse;
 
-        // Existing: notify post author of new comment
-        this.postRepo.findById(postId).then(p => {
-            if (p) this.notifDispatcher.onComment(actingUserId, p.authorId, postId);
-        }).catch(() => {});
+        // Both top-level comments and replies count toward commentsCount.
+        // Fire-and-forget: a transient failure here leaves the counter stale.
+        // Acceptable because the counter is treated as approximate.
+        this.postRepo.incrementComments(postId).catch(() => { });
+
+        // post is already in scope from the findById above — no second round-trip needed.
+        this.notifDispatcher.onComment(actingUserId, post.authorId, postId).catch(() => { });
 
         // Existing: notify parent comment author on reply
         if (dto.parentId) {
             this.commentRepo.findById(dto.parentId).then(parent => {
                 if (parent) this.notifDispatcher.onReply(actingUserId, parent.authorId, (comment as any).id);
-            }).catch(() => {});
+            }).catch(() => { });
         }
 
         // New: enqueue for real-time moderation
         moderationWebhook.enqueueComment({
-            id:       (comment as any).id,
-            content:  comment.content,
+            id: (comment as any).id,
+            content: comment.content,
             authorId: comment.authorId,
             postId,
-        }).catch(() => {});
+        }).catch(() => { });
 
         return comment;
     }
@@ -137,11 +125,11 @@ export class CommentsService {
 
         // Re-enqueue on edit — content may have changed since initial analysis
         moderationWebhook.enqueueComment({
-            id:       commentId,
-            content:  dto.content,
+            id: commentId,
+            content: dto.content,
             authorId: comment.authorId,
-            postId:   (comment as any).postId,
-        }).catch(() => {});
+            postId: (comment as any).postId,
+        }).catch(() => { });
 
         return updated as CommentResponse;
     }
@@ -151,5 +139,10 @@ export class CommentsService {
         if (!comment) throw ApiError.notFound('Comment not found');
         if (comment.authorId !== actingUserId) throw ApiError.forbidden('You can only delete your own comments');
         await this.commentRepo.softDelete(commentId, 'author_deleted');
+        this.postRepo.decrementComments(comment.postId).catch((_err) => {
+            // Logger.getInstance().error(
+            //     `[CommentsService] Failed to decrement commentsCount on post ${comment.postId}: ${err.message}`
+            // );
+        });
     }
 }

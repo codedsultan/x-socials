@@ -19,6 +19,7 @@ export interface PostResponse {
   authorId: string;
   tags: string[];
   likesCount: number;
+  commentsCount: number;  // stored counter — always present, no extra query needed
   createdAt?: Date;
   updatedAt?: Date;
 }

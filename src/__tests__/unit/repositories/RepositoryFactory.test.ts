@@ -12,6 +12,7 @@ import type { DbResolver } from '../../../database/core/DbResolver';
 
 function makeMockAdapter(): IDatabaseAdapter {
     return {
+        adapterType: 'sql',
         connect: vi.fn(), disconnect: vi.fn(), isConnected: vi.fn().mockResolvedValue(true),
         registerModel: vi.fn(), migrate: vi.fn(),
         findOne: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]),

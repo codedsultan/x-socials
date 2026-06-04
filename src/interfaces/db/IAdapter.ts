@@ -12,6 +12,8 @@ export interface FindManyOptions {
 }
 
 export interface IDatabaseAdapter {
+    readonly adapterType: 'mongo' | 'sql';
+
     connect(): Promise<void>;
     disconnect(): Promise<void>;
     isConnected(): Promise<boolean>;

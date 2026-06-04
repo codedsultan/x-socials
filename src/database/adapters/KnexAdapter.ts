@@ -28,6 +28,8 @@ const NO_RETURNING_CLIENTS = new Set(['mysql', 'mysql2', 'sqlite3', 'better-sqli
 const NO_UPDATED_AT_MODELS = new Set(['Token', 'Otp', 'Follow', 'Notification']);
 
 export class KnexAdapter implements IDatabaseAdapter {
+    readonly adapterType = 'sql' as const;
+
     private readonly db: Knex;
     private readonly tableDefs: Map<string, TableDef> = new Map();
     private readonly skipMigrations: boolean;
@@ -344,17 +346,30 @@ export class KnexAdapter implements IDatabaseAdapter {
         const table = this.getTableName(model);
         const hasUpdatedAt = !NO_UPDATED_AT_MODELS.has(model);
 
-        // Separate raw increment directives from plain fields
-        const incrementFields: Record<string, number> = {};
+        // Separate raw increment directives from plain fields.
+        // Increment values can be a plain number OR { value, floor } for floored decrements.
+        type IncrementSpec = number | { value: number; floor: number };
+        const incrementFields: Record<string, IncrementSpec> = {};
         const plainFields: Record<string, unknown> = {};
 
         for (const [key, value] of Object.entries(data)) {
             if (key.endsWith('Increment') && typeof value === 'number') {
-                // e.g. likesCountIncrement → likes_count
+                // e.g. likesCountIncrement: 1 → likes_count = likes_count + 1
                 const column = key
                     .slice(0, -'Increment'.length)
                     .replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
                 incrementFields[column] = value;
+            } else if (
+                key.endsWith('Increment') &&
+                typeof value === 'object' && value !== null &&
+                'value' in (value as object) &&
+                typeof (value as { value: unknown }).value === 'number'
+            ) {
+                // e.g. commentsCountIncrement: { value: -1, floor: 0 }
+                const column = key
+                    .slice(0, -'Increment'.length)
+                    .replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
+                incrementFields[column] = value as { value: number; floor: number };
             } else {
                 plainFields[key] = value;
             }
@@ -369,8 +384,18 @@ export class KnexAdapter implements IDatabaseAdapter {
         };
 
         // Merge raw expressions for atomic counter increments
-        for (const [column, delta] of Object.entries(incrementFields)) {
-            payload[column] = this.db.raw(`?? + ?`, [column, delta]);
+        for (const [column, spec] of Object.entries(incrementFields)) {
+            if (typeof spec === 'number') {
+                payload[column] = this.db.raw(`?? + ?`, [column, spec]);
+            } else {
+                // Floored decrement: CASE WHEN col + delta < floor THEN floor ELSE col + delta END
+                // Works across MySQL, PostgreSQL, and SQLite.
+                const { value: delta, floor } = spec;
+                payload[column] = this.db.raw(
+                    `CASE WHEN ?? + ? < ? THEN ? ELSE ?? + ? END`,
+                    [column, delta, floor, floor, column, delta],
+                );
+            }
         }
 
         if (this.needsPostInsertSelect) {

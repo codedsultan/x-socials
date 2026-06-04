@@ -7,8 +7,7 @@ function makePost(overrides = {}) {
 
 function makeMongoAdapter(overrides: Record<string, any> = {}) {
   return {
-    // Presence of `models` property signals MongooseAdapter to PostRepository
-    models: new Map(),
+    adapterType: 'mongo' as const,
     findMany: vi.fn().mockResolvedValue([makePost()]),
     findOne: vi.fn().mockResolvedValue(makePost()),
     findById: vi.fn().mockResolvedValue(makePost()),
@@ -22,13 +21,15 @@ function makeMongoAdapter(overrides: Record<string, any> = {}) {
     migrate: vi.fn(),
     withTransaction: vi.fn(),
     getClient: vi.fn(),
+    count: vi.fn().mockResolvedValue(1),
+    registerModel: vi.fn(),
     ...overrides,
   };
 }
 
 function makeSqlAdapter(overrides: Record<string, any> = {}) {
   return {
-    // No `models` property → KnexAdapter branch in PostRepository
+    adapterType: 'sql' as const,
     findMany: vi.fn().mockResolvedValue([makePost()]),
     findOne: vi.fn().mockResolvedValue(makePost()),
     create: vi.fn().mockResolvedValue(makePost()),
@@ -41,6 +42,8 @@ function makeSqlAdapter(overrides: Record<string, any> = {}) {
     migrate: vi.fn(),
     withTransaction: vi.fn(),
     getClient: vi.fn(),
+    count: vi.fn().mockResolvedValue(1),
+    registerModel: vi.fn(),
     ...overrides,
   };
 }
@@ -124,6 +127,58 @@ describe('PostRepository', () => {
 
       const payload = adapter.update.mock.calls[0][2] as Record<string, unknown>;
       expect(payload).not.toHaveProperty('$inc');
+    });
+  });
+
+  describe('decrementLikes()', () => {
+    it('uses aggregation pipeline with $max floor for Mongo adapter', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.decrementLikes('post-1');
+
+      const payload = adapter.update.mock.calls[0][2];
+      expect(Array.isArray(payload)).toBe(true);
+      expect((payload as any[])[0]).toMatchObject({ $set: { likesCount: expect.any(Object) } });
+    });
+
+    it('uses likesCountIncrement with floor for SQL adapter', async () => {
+      const adapter = makeSqlAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.decrementLikes('post-1');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post',
+        'post-1',
+        expect.objectContaining({ likesCountIncrement: { value: -1, floor: 0 } })
+      );
+    });
+  });
+
+  describe('decrementComments()', () => {
+    it('uses aggregation pipeline with $max floor for Mongo adapter', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.decrementComments('post-1');
+
+      const payload = adapter.update.mock.calls[0][2];
+      expect(Array.isArray(payload)).toBe(true);
+      expect((payload as any[])[0]).toMatchObject({ $set: { commentsCount: expect.any(Object) } });
+    });
+
+    it('uses commentsCountIncrement with floor for SQL adapter', async () => {
+      const adapter = makeSqlAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.decrementComments('post-1');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post',
+        'post-1',
+        expect.objectContaining({ commentsCountIncrement: { value: -1, floor: 0 } })
+      );
     });
   });
 });

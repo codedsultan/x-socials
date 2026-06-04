@@ -6,6 +6,7 @@ export const postMongoSchema: SchemaDefinition = {
     authorId: { type: String, required: true },
     tags: { type: [String], default: [] },
     likesCount: { type: Number, default: 0, min: 0 },
+    commentsCount: { type: Number, default: 0, min: 0 },
     deletedAt: { type: Date, default: null },
     deletionReason: { type: String, default: null },  // 'admin_removed' | 'author_deleted'
 };

@@ -4,6 +4,7 @@ import type { IDatabaseAdapter } from '../../../interfaces/db/IAdapter';
 
 function makeMockAdapter(): IDatabaseAdapter {
     return {
+        adapterType: 'sql',
         connect: vi.fn().mockResolvedValue(undefined),
         disconnect: vi.fn().mockResolvedValue(undefined),
         isConnected: vi.fn().mockResolvedValue(true),

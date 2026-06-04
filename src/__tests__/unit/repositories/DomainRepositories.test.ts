@@ -9,6 +9,7 @@ import { TokenRepository } from '../../../repositories/TokenRepository';
 
 function makeAdapter(): IDatabaseAdapter {
     return {
+        adapterType: 'sql',
         connect: vi.fn(), disconnect: vi.fn(), isConnected: vi.fn().mockResolvedValue(true),
         registerModel: vi.fn(), migrate: vi.fn().mockResolvedValue(undefined),
         findOne: vi.fn().mockResolvedValue(null),
