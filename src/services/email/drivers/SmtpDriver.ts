@@ -44,7 +44,8 @@ export class SmtpDriver implements IEmailDriver {
   }
 
   async send(options: SendMailOptions): Promise<void> {
-    const from = options.from ?? process.env['SMTP_FROM'] ?? 'noreply@x-socials.com';
+    // const from = options.from ?? process.env['SMTP_FROM'] ?? 'noreply@x-socials.com';
+    const from = options.from ?? `${process.env['SMTP_FROM_NAME'] ?? 'X Socials'} <${process.env['SMTP_FROM'] ?? 'noreply@x-socials.com'}>`;
     const logger = Logger.getInstance();
 
     try {
