@@ -8,8 +8,9 @@ import { ApiError } from '../../shared/errors/ApiError';
 import ConfigService from '../../config/config.service';
 import { generateUid } from '../../utils/uuid';
 import { OtpService } from '../../services/otp/OtpService';
-import { getEmailService, type EmailService } from '../../services/email/EmailService';
+import { enqueueEmail } from '../../queue/emailQueue';
 import { OTP_TTL_MINUTES } from '../../services/email/templates/partials/otp-block.partial';
+import Logger from '../../logger';
 import type {
   RegisterDto,
   LoginDto,
@@ -19,7 +20,6 @@ import type {
   VerifyOtpDto,
   ResetPasswordDto,
 } from './auth.types';
-import Logger from '../../logger';
 
 const BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_TTL_DAYS = 30;
@@ -37,16 +37,12 @@ export class AuthService {
     return this.repoFactory.getRepository<any>('Otp') as OtpRepository;
   }
 
-  constructor(
-    private readonly repoFactory: RepositoryFactory,
-    private readonly emailService: EmailService = getEmailService(),
-  ) { }
+  constructor(private readonly repoFactory: RepositoryFactory) { }
 
   // ─── Register / Login ────────────────────────────────────────────────────
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
     const exists = await this.userRepo.emailExists(dto.email);
-    const logger = Logger.getInstance();
     if (exists) {
       throw ApiError.conflict('An account with this email already exists');
     }
@@ -61,10 +57,11 @@ export class AuthService {
 
     const tokens = await this.issueTokens(user.id, user.email);
 
-    // Fire-and-forget: send email verification OTP after registration.
-    // this.sendEmailVerificationOtp(user.id, user.email).catch(() => { });
-    this.sendEmailVerificationOtp(user.id, user.email).catch((err) => {
-      logger.error(`Failed to send verification email to ${user.email}: ${err.message}`);
+    // Queue email verification — fire-and-forget with retry via BullMQ
+    this.queueEmailVerification(user.id, user.email, user.name ?? undefined).catch((err) => {
+      Logger.getInstance().error(
+        `[AuthService] Failed to enqueue verification email for ${user.email}: ${err.message}`
+      );
     });
 
     return {
@@ -75,14 +72,10 @@ export class AuthService {
 
   async login(dto: LoginDto): Promise<AuthResponse> {
     const user = await this.userRepo.findByEmail(dto.email);
-    if (!user) {
-      throw ApiError.unauthorized('Invalid email or password');
-    }
+    if (!user) throw ApiError.unauthorized('Invalid email or password');
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) {
-      throw ApiError.unauthorized('Invalid email or password');
-    }
+    if (!valid) throw ApiError.unauthorized('Invalid email or password');
 
     const tokens = await this.issueTokens(user.id, user.email);
 
@@ -127,7 +120,8 @@ export class AuthService {
   async requestEmailVerification(userId: string): Promise<void> {
     const user = await this.userRepo.findById(userId);
     if (!user) throw ApiError.notFound('User not found');
-    await this.sendEmailVerificationOtp(userId, user.email);
+
+    await this.queueEmailVerification(userId, user.email, user.name ?? undefined);
   }
 
   async verifyEmail(dto: VerifyOtpDto): Promise<void> {
@@ -144,12 +138,12 @@ export class AuthService {
 
   async requestPasswordReset(dto: RequestOtpDto): Promise<void> {
     const user = await this.userRepo.findByEmail(dto.email);
-    if (!user) return; // silent — don't reveal whether the email exists
+    if (!user) return; // silent — prevent email enumeration
 
     const otpService = new OtpService(this.otpRepo);
     const code = await otpService.issue(user.id, 'password_reset');
 
-    await this.emailService.sendTemplate('password_reset', user.email, {
+    await enqueueEmail('password_reset', user.email, {
       code,
       expiryMinutes: OTP_TTL_MINUTES,
       userName: user.name ?? undefined,
@@ -171,13 +165,18 @@ export class AuthService {
 
   // ─── Private helpers ─────────────────────────────────────────────────────
 
-  private async sendEmailVerificationOtp(userId: string, email: string): Promise<void> {
+  private async queueEmailVerification(
+    userId: string,
+    email: string,
+    userName?: string,
+  ): Promise<void> {
     const otpService = new OtpService(this.otpRepo);
     const code = await otpService.issue(userId, 'email_verification');
 
-    await this.emailService.sendTemplate('email_verification', email, {
+    await enqueueEmail('email_verification', email, {
       code,
       expiryMinutes: OTP_TTL_MINUTES,
+      userName,
     });
   }
 

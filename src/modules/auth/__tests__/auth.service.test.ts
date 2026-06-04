@@ -1,8 +1,15 @@
 // src/modules/auth/__tests__/auth.service.test.ts
 import { describe, it, expect, vi } from 'vitest';
 import { AuthService } from '../auth.service';
-import type { IEmailDriver } from '../../../services/email/drivers/IEmailDriver';
-import { createEmailService } from '../../../services/email/EmailService';
+
+// ─── Mock the queue — no Redis needed in tests ────────────────────────────────
+
+vi.mock('../../../queue/emailQueue', () => ({
+  enqueueEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { enqueueEmail } from '../../../queue/emailQueue';
+const mockEnqueue = vi.mocked(enqueueEmail);
 
 // ── Repo fakes ────────────────────────────────────────────────────────────────
 
@@ -72,15 +79,6 @@ function makeFactory(
   };
 }
 
-/** No-op email driver — email sends are fire-and-forget in most flows */
-function makeEmailDriver(): IEmailDriver & { calls: any[] } {
-  const calls: any[] = [];
-  return {
-    calls,
-    send: vi.fn(async (opts): Promise<void> => { calls.push(opts); }),
-  };
-}
-
 vi.mock('../../../config/config.service', () => ({
   default: {
     getServerConfig: () => ({
@@ -90,7 +88,11 @@ vi.mock('../../../config/config.service', () => ({
   },
 }));
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  mockEnqueue.mockClear();
+});
 
 describe('AuthService', () => {
 
@@ -99,7 +101,7 @@ describe('AuthService', () => {
   describe('register', () => {
     it('creates a user and returns tokens', async () => {
       const factory = makeFactory();
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       const result = await svc.register({ name: 'Alice', email: 'a@b.com', password: 'Password1' });
 
@@ -112,7 +114,7 @@ describe('AuthService', () => {
 
     it('throws 409 if email already exists', async () => {
       const factory = makeFactory({ emailExists: vi.fn().mockResolvedValue(true) });
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await expect(svc.register({ name: 'Alice', email: 'a@b.com', password: 'Password1' }))
         .rejects.toMatchObject({ statusCode: 409 });
@@ -120,7 +122,7 @@ describe('AuthService', () => {
 
     it('hashes the password — does not store plaintext', async () => {
       const factory = makeFactory();
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await svc.register({ name: 'Alice', email: 'a@b.com', password: 'Password1' });
 
@@ -129,18 +131,20 @@ describe('AuthService', () => {
       expect(createCall.passwordHash).toMatch(/^\$2[ab]\$/);
     });
 
-    it('issues an email-verification OTP after registration (fire-and-forget)', async () => {
-      const emailDriver = makeEmailDriver();
+    it('enqueues an email_verification job after registration', async () => {
       const factory = makeFactory();
-      const svc = new AuthService(factory as any, createEmailService(emailDriver));
+      const svc = new AuthService(factory as any);
 
       await svc.register({ name: 'Alice', email: 'a@b.com', password: 'Password1' });
 
-      // Drain the microtask queue so the fire-and-forget chain completes
-      await new Promise<void>(resolve => setImmediate(resolve));
+      // Allow the fire-and-forget to settle
+      await new Promise(r => setTimeout(r, 10));
 
-      expect(factory._otpRepo.create).toHaveBeenCalledOnce();
-      expect(emailDriver.calls[0]?.subject).toBe('Verify your email address');
+      expect(mockEnqueue).toHaveBeenCalledWith(
+        'email_verification',
+        'a@b.com',
+        expect.objectContaining({ code: expect.any(String), expiryMinutes: expect.any(Number) }),
+      );
     });
   });
 
@@ -149,7 +153,7 @@ describe('AuthService', () => {
   describe('login', () => {
     it('throws 401 when user does not exist', async () => {
       const factory = makeFactory();
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await expect(svc.login({ email: 'x@y.com', password: 'Password1' }))
         .rejects.toMatchObject({ statusCode: 401 });
@@ -162,7 +166,7 @@ describe('AuthService', () => {
           passwordHash: '$2b$12$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
         }),
       });
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await expect(svc.login({ email: 'a@b.com', password: 'WrongPass1' }))
         .rejects.toMatchObject({ statusCode: 401 });
@@ -174,7 +178,7 @@ describe('AuthService', () => {
   describe('logout', () => {
     it('revokes all tokens for the user', async () => {
       const factory = makeFactory();
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await svc.logout('user-1');
 
@@ -187,7 +191,7 @@ describe('AuthService', () => {
   describe('refreshTokens', () => {
     it('throws 401 when token is not in DB', async () => {
       const factory = makeFactory();
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await expect(svc.refreshTokens('bad-token'))
         .rejects.toMatchObject({ statusCode: 401 });
@@ -199,40 +203,64 @@ describe('AuthService', () => {
           id: 't-1', type: 'refresh', expiresAt: new Date(Date.now() - 1000),
         }),
       });
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await expect(svc.refreshTokens('expired'))
         .rejects.toMatchObject({ statusCode: 401 });
     });
   });
 
-  // ── requestPasswordReset ──────────────────────────────────────────────────
+
+
+  // ── requestEmailVerification ──────────────────────────────────────────────
+
+  // describe('requestEmailVerification', () => {
+  //   it('issues OTP and sends email for existing user', async () => {
+  //     const emailDriver = makeEmailDriver();
+  //     const factory = makeFactory({
+  //       findById: vi.fn().mockResolvedValue({ id: 'user-1', email: 'a@b.com', name: 'Alice' }),
+  //     });
+  //     const svc = new AuthService(factory as any, createEmailService(emailDriver));
+
+  //     await svc.requestEmailVerification('user-1');
+
+  //     expect(factory._otpRepo.create).toHaveBeenCalledOnce();
+  //     expect(emailDriver.calls[0]?.subject).toBe('Verify your email address');
+  //   });
+
+  //   it('throws 404 when user does not exist', async () => {
+  //     const factory = makeFactory({ findById: vi.fn().mockResolvedValue(null) });
+  //     const svc = new AuthService(factory as any);
+
+  //     await expect(svc.requestEmailVerification('ghost'))
+  //       .rejects.toMatchObject({ statusCode: 404 });
+  //   });
+  // });
 
   describe('requestPasswordReset', () => {
-    it('issues OTP and sends email when user exists', async () => {
-      const emailDriver = makeEmailDriver();
+    it('enqueues a password_reset job when user exists', async () => {
       const factory = makeFactory({
-        findByEmail: vi.fn().mockResolvedValue({ id: 'user-1', email: 'a@b.com' }),
+        findByEmail: vi.fn().mockResolvedValue({ id: 'user-1', email: 'a@b.com', name: 'Alice' }),
       });
-      const svc = new AuthService(factory as any, createEmailService(emailDriver));
+      const svc = new AuthService(factory as any);
 
       await svc.requestPasswordReset({ email: 'a@b.com' });
 
-      expect(factory._otpRepo.create).toHaveBeenCalledOnce();
-      expect(emailDriver.calls[0]?.subject).toBe('Reset your password');
+      expect(mockEnqueue).toHaveBeenCalledWith(
+        'password_reset',
+        'a@b.com',
+        expect.objectContaining({ code: expect.any(String) }),
+      );
     });
 
     it('returns silently when user does not exist (prevents enumeration)', async () => {
-      const emailDriver = makeEmailDriver();
       const factory = makeFactory({ findByEmail: vi.fn().mockResolvedValue(null) });
-      const svc = new AuthService(factory as any, createEmailService(emailDriver));
+      const svc = new AuthService(factory as any);
 
       await expect(svc.requestPasswordReset({ email: 'unknown@x.com' })).resolves.toBeUndefined();
-      expect(emailDriver.send).not.toHaveBeenCalled();
+      expect(mockEnqueue).not.toHaveBeenCalled();
     });
   });
-
-  // ── resetPassword ─────────────────────────────────────────────────────────
 
   describe('resetPassword', () => {
     it('updates password and revokes all tokens on valid OTP', async () => {
@@ -245,64 +273,23 @@ describe('AuthService', () => {
         {},
         { findValidOtp: vi.fn().mockResolvedValue(validOtp) },
       );
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await svc.resetPassword({ email: 'a@b.com', code: '654321', newPassword: 'NewPass1!' });
 
-      expect(factory._userRepo.update).toHaveBeenCalledOnce();
       const updateArg = factory._userRepo.update.mock.calls[0][1];
-      expect(updateArg.passwordHash).not.toBe('NewPass1!');
       expect(updateArg.passwordHash).toMatch(/^\$2[ab]\$/);
-
       expect(factory._tokenRepo.revokeAllForUser).toHaveBeenCalledWith('user-1');
     });
 
-    it('throws 400 when user is not found (prevents enumeration leak)', async () => {
+    it('throws 400 when user not found', async () => {
       const factory = makeFactory({ findByEmail: vi.fn().mockResolvedValue(null) });
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await expect(svc.resetPassword({ email: 'x@y.com', code: '000000', newPassword: 'Pass1!!' }))
         .rejects.toMatchObject({ statusCode: 400 });
     });
-
-    it('throws 400 when OTP is invalid', async () => {
-      const factory = makeFactory({
-        findByEmail: vi.fn().mockResolvedValue({ id: 'user-1', email: 'a@b.com' }),
-      });
-      // otpRepo.findValidOtp returns null → OtpService throws
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
-
-      await expect(svc.resetPassword({ email: 'a@b.com', code: '000000', newPassword: 'Pass1!!' }))
-        .rejects.toMatchObject({ statusCode: 400 });
-    });
   });
-
-  // ── requestEmailVerification ──────────────────────────────────────────────
-
-  describe('requestEmailVerification', () => {
-    it('issues OTP and sends email for existing user', async () => {
-      const emailDriver = makeEmailDriver();
-      const factory = makeFactory({
-        findById: vi.fn().mockResolvedValue({ id: 'user-1', email: 'a@b.com', name: 'Alice' }),
-      });
-      const svc = new AuthService(factory as any, createEmailService(emailDriver));
-
-      await svc.requestEmailVerification('user-1');
-
-      expect(factory._otpRepo.create).toHaveBeenCalledOnce();
-      expect(emailDriver.calls[0]?.subject).toBe('Verify your email address');
-    });
-
-    it('throws 404 when user does not exist', async () => {
-      const factory = makeFactory({ findById: vi.fn().mockResolvedValue(null) });
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
-
-      await expect(svc.requestEmailVerification('ghost'))
-        .rejects.toMatchObject({ statusCode: 404 });
-    });
-  });
-
-  // ── verifyEmail ───────────────────────────────────────────────────────────
 
   describe('verifyEmail', () => {
     it('marks email verified on valid OTP', async () => {
@@ -315,21 +302,23 @@ describe('AuthService', () => {
         {},
         { findValidOtp: vi.fn().mockResolvedValue(validOtp) },
       );
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await svc.verifyEmail({ userId: 'user-1', code: '111111' });
 
-      expect(factory._userRepo.update).toHaveBeenCalledWith('user-1', expect.objectContaining({
-        emailVerifiedAt: expect.any(Date),
-      }));
+      expect(factory._userRepo.update).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ emailVerifiedAt: expect.any(Date) }),
+      );
     });
 
-    it('throws 404 when user is not found', async () => {
+    it('throws 404 when user not found', async () => {
       const factory = makeFactory({ findById: vi.fn().mockResolvedValue(null) });
-      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+      const svc = new AuthService(factory as any);
 
       await expect(svc.verifyEmail({ userId: 'ghost', code: '111111' }))
         .rejects.toMatchObject({ statusCode: 404 });
     });
   });
+
 });

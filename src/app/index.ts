@@ -173,6 +173,7 @@ export class ExpressApp {
             Logger.getInstance().info(`🔄 Migrations: ${runMigrations ? 'auto' : 'manual'}`);
         }).on('error', (err: Error) => {
             Logger.getInstance().error(`Server error: ${err.message}`);
+            process.exit(1);
         });
 
         this._setupGracefulShutdown();
@@ -201,8 +202,8 @@ export class ExpressApp {
             await this._close();
             process.exit(0);
         };
-        process.on('SIGTERM', shutdown);
-        process.on('SIGINT', shutdown);
+        process.once('SIGTERM', shutdown);
+        process.once('SIGINT', shutdown);
     }
 }
 

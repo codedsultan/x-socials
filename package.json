@@ -20,7 +20,9 @@
     "migrate:status": "tsx database/scripts/migrations/status.ts",
     "db:seed": "tsx database/scripts/db/seed.ts",
     "db:drop": "tsx database/scripts/db/drop.ts",
-    "db:reset": "tsx database/scripts/db/reset.ts"
+    "db:reset": "tsx database/scripts/db/reset.ts",
+    "worker": "node dist/workers/emailWorker.js",
+    "worker:dev": "tsx src/workers/emailWorker.ts"
   },
   "keywords": [],
   "author": "",
@@ -60,6 +62,7 @@
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.10.0",
     "body-parser": "^2.2.2",
+    "bullmq": "^5.78.0",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
