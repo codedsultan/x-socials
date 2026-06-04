@@ -61,10 +61,18 @@ export async function enqueueEmail<T extends EmailType>(
   to: string,
   data: EmailDataMap[T],
 ): Promise<void> {
+  if (process.env['EMAIL_QUEUE'] !== 'true') {
+    // Local dev: send directly, fire-and-forget
+    const { getEmailService } = await import('../services/email/EmailService');
+    getEmailService().sendTemplate(type as any, to, data as any).catch((err) => {
+      console.warn(`[enqueueEmail] Direct send failed: ${err.message}`);
+    });
+    return;
+  }
+
   const payload = { type, to, data } as EmailJobData;
   await getEmailQueue().add(type, payload);
 }
-
 /** Gracefully close the queue connection — call on process shutdown */
 export async function closeEmailQueue(): Promise<void> {
   if (_queue) {
