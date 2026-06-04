@@ -13,6 +13,24 @@ export interface RefreshTokenDto {
   refreshToken: string;
 }
 
+/** POST /auth/password/forgot */
+export interface RequestOtpDto {
+  email: string;
+}
+
+/** POST /auth/email/verify */
+export interface VerifyOtpDto {
+  userId: string;
+  code: string;
+}
+
+/** POST /auth/password/reset */
+export interface ResetPasswordDto {
+  email: string;
+  code: string;
+  newPassword: string;
+}
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;

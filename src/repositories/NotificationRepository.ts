@@ -1,13 +1,7 @@
 import { BaseRepository } from './BaseRepository';
 import type { IRepository } from '../interfaces/db/IRepository';
 import { generateSqlId } from '../utils/uuid';
-
-export type NotificationType =
-    | 'like_post'
-    | 'like_comment'
-    | 'follow'
-    | 'comment'
-    | 'reply';
+import type { NotificationType } from '../modules/notifications/notifications.types';
 
 export interface Notification {
     id: string;

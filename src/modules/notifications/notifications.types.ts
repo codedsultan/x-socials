@@ -3,7 +3,8 @@ export type NotificationType =
   | 'like_comment'
   | 'follow'
   | 'comment'
-  | 'reply';
+  | 'reply'
+  | 'content_removed';   // fired when an admin removes a post or comment
 
 export interface NotificationResponse {
   id: string;

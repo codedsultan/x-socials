@@ -4,6 +4,7 @@ import type { IDatabaseAdapter } from '../../../interfaces/db/IAdapter';
 
 function makeMockAdapter(): IDatabaseAdapter {
     return {
+        adapterType: 'sql',
         connect: vi.fn().mockResolvedValue(undefined),
         disconnect: vi.fn().mockResolvedValue(undefined),
         isConnected: vi.fn().mockResolvedValue(true),
@@ -14,9 +15,9 @@ function makeMockAdapter(): IDatabaseAdapter {
         create: vi.fn().mockResolvedValue({ id: '1', email: 'a@b.com' }),
         update: vi.fn().mockResolvedValue({ id: '1', email: 'b@b.com' }),
         delete: vi.fn().mockResolvedValue(true),
-        count: vi.fn().mockResolvedValue(0),
         withTransaction: vi.fn(),
-        getClient: vi.fn()
+        getClient: vi.fn(),
+        count: vi.fn().mockResolvedValue(0)
     };
 }
 

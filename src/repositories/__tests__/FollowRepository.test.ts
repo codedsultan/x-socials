@@ -103,4 +103,36 @@ describe('FollowRepository', () => {
       expect(adapter.findMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('unfollow()', () => {
+    it('returns false when adapter has no getKnex (non-SQL path)', async () => {
+      const adapter = makeAdapter();
+      const repo = new FollowRepository(adapter as any, 'Follow');
+
+      expect(await repo.unfollow('user-1', 'user-2')).toBe(false);
+    });
+
+    it('returns true when Knex deletes a row', async () => {
+      const mockDelete  = vi.fn().mockResolvedValue(1);
+      const mockWhere   = vi.fn().mockReturnValue({ delete: mockDelete });
+      const mockTable   = vi.fn().mockReturnValue({ where: mockWhere });
+      const mockGetKnex = vi.fn().mockReturnValue(mockTable);
+      const adapter = makeAdapter({ getKnex: mockGetKnex });
+      const repo = new FollowRepository(adapter as any, 'Follow');
+
+      expect(await repo.unfollow('user-1', 'user-2')).toBe(true);
+      expect(mockWhere).toHaveBeenCalledWith({ follower_id: 'user-1', following_id: 'user-2' });
+    });
+
+    it('returns false when Knex finds no matching row to delete', async () => {
+      const mockDelete  = vi.fn().mockResolvedValue(0);
+      const mockWhere   = vi.fn().mockReturnValue({ delete: mockDelete });
+      const mockTable   = vi.fn().mockReturnValue({ where: mockWhere });
+      const mockGetKnex = vi.fn().mockReturnValue(mockTable);
+      const adapter = makeAdapter({ getKnex: mockGetKnex });
+      const repo = new FollowRepository(adapter as any, 'Follow');
+
+      expect(await repo.unfollow('user-1', 'user-2')).toBe(false);
+    });
+  });
 });

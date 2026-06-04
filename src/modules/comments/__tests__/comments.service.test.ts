@@ -1,6 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CommentsService } from '../comments.service';
 
+vi.mock('../../../services/ModerationWebhook', () => ({
+  moderationWebhook: {
+    enqueueComment: vi.fn().mockResolvedValue(undefined),
+    enqueuePost:    vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 function makeComment(overrides = {}) {
   return { id: 'c-1', postId: 'post-1', authorId: 'user-1', content: 'Nice!', parentId: null, ...overrides };
 }
@@ -17,8 +24,7 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
     create: vi.fn().mockResolvedValue(makeComment()),
     update: vi.fn().mockResolvedValue(makeComment({ content: 'Updated' })),
     delete: vi.fn().mockResolvedValue(true),
-    findOne: vi.fn().mockResolvedValue(null),
-    // listForPost calls findMany({ postId, parentId: null }, { limit: limit+1, ... })
+    softDelete: vi.fn().mockResolvedValue(undefined),
     findMany: vi.fn().mockResolvedValue([makeComment()]),
     exists: vi.fn().mockResolvedValue(false),
     count: vi.fn().mockResolvedValue(1),
@@ -29,7 +35,10 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
     findMany: vi.fn().mockResolvedValue([]),
     findOne: vi.fn().mockResolvedValue(null),
     exists: vi.fn(), findByAuthor: vi.fn(), findByTag: vi.fn(),
-    incrementLikes: vi.fn(), count: vi.fn().mockResolvedValue(0),
+    incrementLikes: vi.fn(), decrementLikes: vi.fn(),
+    incrementComments: vi.fn().mockResolvedValue(undefined),
+    decrementComments: vi.fn().mockResolvedValue(undefined),
+    count: vi.fn().mockResolvedValue(0),
   };
     const notifRepo = {
     notify:      vi.fn().mockResolvedValue(null),
@@ -58,6 +67,24 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
 }
 
 describe('CommentsService', () => {
+  describe('getReplies', () => {
+    it('returns paginated replies for a parent comment', async () => {
+      const factory = makeFactory();
+      const service = new CommentsService(factory as any);
+      const result = await service.getReplies('c-1', { limit: 20 });
+      expect(result.items).toHaveLength(1);
+      expect(result.meta).toBeDefined();
+    });
+
+    it('returns empty page when there are no replies', async () => {
+      const factory = makeFactory();
+      factory._commentRepo.findMany.mockResolvedValue([]);
+      const service = new CommentsService(factory as any);
+      const result = await service.getReplies('c-1', { limit: 20 });
+      expect(result.items).toEqual([]);
+    });
+  });
+
   describe('listForPost', () => {
     it('returns paginated comments for a post', async () => {
       const factory = makeFactory();
@@ -91,6 +118,40 @@ describe('CommentsService', () => {
       await expect(service.createComment('user-1', 'bad-post', { content: 'x' }))
         .rejects.toMatchObject({ statusCode: 404 });
     });
+
+    it('creates a reply when parentId is provided and parent belongs to the same post', async () => {
+      const factory = makeFactory();
+      const service = new CommentsService(factory as any);
+      const comment = await service.createComment('user-1', 'post-1', { content: 'A reply!', parentId: 'c-1' });
+      expect(factory._commentRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ parentId: 'c-1', postId: 'post-1' })
+      );
+      expect(comment).toBeDefined();
+    });
+
+    it('throws 404 when parent comment does not exist', async () => {
+      const factory = makeFactory();
+      factory._commentRepo.findById.mockResolvedValue(null);
+      const service = new CommentsService(factory as any);
+      await expect(service.createComment('user-1', 'post-1', { content: 'Reply', parentId: 'nonexistent' }))
+        .rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('throws 400 when parent comment belongs to a different post', async () => {
+      const factory = makeFactory({ commentOverrides: { postId: 'different-post' } });
+      const service = new CommentsService(factory as any);
+      await expect(service.createComment('user-1', 'post-1', { content: 'Reply', parentId: 'c-1' }))
+        .rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('calls incrementComments on the post after creating a comment', async () => {
+      const factory = makeFactory();
+      const service = new CommentsService(factory as any);
+      await service.createComment('user-1', 'post-1', { content: 'Nice!' });
+      // incrementComments is fire-and-forget; flush the microtask queue
+      await Promise.resolve();
+      expect(factory._postRepo.incrementComments).toHaveBeenCalledWith('post-1');
+    });
   });
 
   describe('updateComment', () => {
@@ -121,7 +182,15 @@ describe('CommentsService', () => {
       const factory = makeFactory();
       const service = new CommentsService(factory as any);
       await service.deleteComment('user-1', 'c-1');
-      expect(factory._commentRepo.delete).toHaveBeenCalledWith('c-1');
+      expect(factory._commentRepo.softDelete).toHaveBeenCalledWith('c-1', 'author_deleted');
+    });
+
+    it('calls decrementComments on the post after deleting a comment', async () => {
+      const factory = makeFactory();
+      const service = new CommentsService(factory as any);
+      await service.deleteComment('user-1', 'c-1');
+      await Promise.resolve();
+      expect(factory._postRepo.decrementComments).toHaveBeenCalledWith('post-1');
     });
   });
 });

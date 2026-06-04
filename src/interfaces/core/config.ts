@@ -72,7 +72,10 @@ export interface IEnvConfig {
   JWT_EXPIRES_IN?: string;
 
   // ── Email ──
-  SENDGRID_API_KEY?: string;
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  SMTP_USER?: string;
+  SMTP_KEY?: string;
   SMTP_FROM?: string;
 
   // ── Cloudinary ──

@@ -19,10 +19,13 @@ export default defineConfig({
                 'src/models/schemas/**',
                 '**/*.test.ts',
                 '**/*.spec.ts',
+                // Controllers and routes contain no business logic per architecture guidelines
+                '**/*.controller.ts',
+                '**/*.routes.ts',
             ],
             thresholds: {
                 statements: 60,
-                branches: 50,
+                branches: 55,
                 functions: 60,
                 lines: 60,
             },

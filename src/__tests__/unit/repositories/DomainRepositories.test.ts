@@ -9,6 +9,7 @@ import { TokenRepository } from '../../../repositories/TokenRepository';
 
 function makeAdapter(): IDatabaseAdapter {
     return {
+        adapterType: 'sql',
         connect: vi.fn(), disconnect: vi.fn(), isConnected: vi.fn().mockResolvedValue(true),
         registerModel: vi.fn(), migrate: vi.fn().mockResolvedValue(undefined),
         findOne: vi.fn().mockResolvedValue(null),
@@ -16,9 +17,9 @@ function makeAdapter(): IDatabaseAdapter {
         create: vi.fn().mockResolvedValue({ id: '1' }),
         update: vi.fn().mockResolvedValue({ id: '1' }),
         delete: vi.fn().mockResolvedValue(true),
-        count: vi.fn().mockResolvedValue(0),
         withTransaction: vi.fn(),
-        getClient: vi.fn()
+        getClient: vi.fn(),
+        count: vi.fn().mockResolvedValue(0)
     };
 }
 
@@ -48,6 +49,26 @@ describe('UserRepository', () => {
     it('emailExists returns false when not found', async () => {
         expect(await repo.emailExists('nope@b.com')).toBe(false);
     });
+
+    it('findByIds returns empty array without hitting the adapter for empty input', async () => {
+        const result = await repo.findByIds([]);
+        expect(result).toEqual([]);
+        expect(adapter.findMany).not.toHaveBeenCalled();
+    });
+
+    it('findByIds calls findMany with the id array', async () => {
+        vi.mocked(adapter.findMany).mockResolvedValue([{ id: 'u1' }, { id: 'u2' }]);
+        const result = await repo.findByIds(['u1', 'u2']);
+        expect(adapter.findMany).toHaveBeenCalledWith('User', { id: ['u1', 'u2'] }, undefined);
+        expect(result).toHaveLength(2);
+    });
+
+    it('setSuspended calls update with the suspended flag', async () => {
+        vi.mocked(adapter.update).mockResolvedValue({ id: 'u1', suspended: true } as any);
+        const result = await repo.setSuspended('u1', true);
+        expect(adapter.update).toHaveBeenCalledWith('User', 'u1', { suspended: true });
+        expect(result).toMatchObject({ suspended: true });
+    });
 });
 
 // ─── PostRepository ───────────────────────────────────────────────────────────
@@ -60,18 +81,18 @@ describe('PostRepository', () => {
     it('findByAuthor calls findMany with { authorId }', async () => {
         vi.mocked(adapter.findMany).mockResolvedValue([{ id: '1', authorId: 'u1' }]);
         const results = await repo.findByAuthor('u1');
-        expect(adapter.findMany).toHaveBeenCalledWith('Post', { authorId: 'u1' }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Post', { deletedAt: null, authorId: 'u1' }, undefined);
         expect(results).toHaveLength(1);
     });
 
     it('findByAuthor passes options through', async () => {
         await repo.findByAuthor('u1', { limit: 5 });
-        expect(adapter.findMany).toHaveBeenCalledWith('Post', { authorId: 'u1' }, { limit: 5 });
+        expect(adapter.findMany).toHaveBeenCalledWith('Post', { deletedAt: null, authorId: 'u1' }, { limit: 5 });
     });
 
     it('findByTag calls findMany with scalar tag (Mongoose array-element match)', async () => {
         await repo.findByTag('typescript');
-        expect(adapter.findMany).toHaveBeenCalledWith('Post', { tags: 'typescript' }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Post', { deletedAt: null, tags: 'typescript' }, undefined);
     });
 
     it('incrementLikes uses likesCountIncrement on SQL adapters (no models property)', async () => {
@@ -91,17 +112,53 @@ describe('CommentRepository', () => {
 
     it('findByPost calls findMany with { postId }', async () => {
         await repo.findByPost('post-1');
-        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { postId: 'post-1' }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { deletedAt: null, postId: 'post-1' }, undefined);
     });
 
     it('findByPost passes options through', async () => {
         await repo.findByPost('post-1', { limit: 10 });
-        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { postId: 'post-1' }, { limit: 10 });
+        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { deletedAt: null, postId: 'post-1' }, { limit: 10 });
     });
 
     it('findReplies calls findMany with { parentId }', async () => {
         await repo.findReplies('comment-1');
-        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { parentId: 'comment-1' }, undefined);
+        expect(adapter.findMany).toHaveBeenCalledWith('Comment', { deletedAt: null, parentId: 'comment-1' }, undefined);
+    });
+
+    it('findById returns null when comment is soft-deleted', async () => {
+        vi.mocked(adapter.findOne).mockResolvedValue({ id: 'c1', deletedAt: new Date() });
+        expect(await repo.findById('c1')).toBeNull();
+    });
+
+    it('findById returns comment when not soft-deleted', async () => {
+        vi.mocked(adapter.findOne).mockResolvedValue({ id: 'c1', deletedAt: null });
+        expect(await repo.findById('c1')).toMatchObject({ id: 'c1' });
+    });
+
+    it('findById returns null when comment not found at all', async () => {
+        vi.mocked(adapter.findOne).mockResolvedValue(null);
+        expect(await repo.findById('c1')).toBeNull();
+    });
+
+    it('findByIdRaw bypasses the soft-delete filter', async () => {
+        const deleted = { id: 'c1', deletedAt: new Date() };
+        vi.mocked(adapter.findOne).mockResolvedValue(deleted);
+        const result = await repo.findByIdRaw('c1');
+        expect(result).toMatchObject({ deletedAt: expect.any(Date) });
+    });
+
+    it('count merges the notDeleted filter with caller-provided filter', async () => {
+        vi.mocked(adapter.count).mockResolvedValue(5);
+        await repo.count({ postId: 'p1' } as any);
+        expect(adapter.count).toHaveBeenCalledWith('Comment', { deletedAt: null, postId: 'p1' });
+    });
+
+    it('softDelete sets deletedAt and deletionReason on the comment', async () => {
+        await repo.softDelete('c1', 'spam');
+        expect(adapter.update).toHaveBeenCalledWith(
+            'Comment', 'c1',
+            expect.objectContaining({ deletedAt: expect.any(Date), deletionReason: 'spam' })
+        );
     });
 });
 
@@ -193,5 +250,21 @@ describe('TokenRepository', () => {
     it('revokeAllForUser does nothing when no tokens exist', async () => {
         await repo.revokeAllForUser('u-no-tokens');
         expect(adapter.delete).not.toHaveBeenCalled();
+    });
+
+    it('revokeAllForUser uses Knex batch DELETE when getKnex is available', async () => {
+        const mockDelete  = vi.fn().mockResolvedValue(undefined);
+        const mockWhere   = vi.fn().mockReturnValue({ delete: mockDelete });
+        const mockTable   = vi.fn().mockReturnValue({ where: mockWhere });
+        const mockGetKnex = vi.fn().mockReturnValue(mockTable);
+        const knexAdapter = { ...makeAdapter(), getKnex: mockGetKnex };
+        const knexRepo    = new TokenRepository(knexAdapter as any, 'Token');
+
+        await knexRepo.revokeAllForUser('u1');
+
+        expect(mockTable).toHaveBeenCalledWith('tokens');
+        expect(mockWhere).toHaveBeenCalledWith({ user_id: 'u1' });
+        expect(mockDelete).toHaveBeenCalled();
+        expect(knexAdapter.findMany).not.toHaveBeenCalled();
     });
 });

@@ -14,6 +14,7 @@ export const usersTable = {
         table.string('email', 255).notNullable().unique();
         table.string('password_hash', 255).notNullable();
         table.string('name', 255).nullable();
+        table.boolean('suspended').notNullable().defaultTo(false);
         table.timestamp('created_at').notNullable().defaultTo(db.fn.now());
         table.timestamp('updated_at').notNullable().defaultTo(db.fn.now());
 

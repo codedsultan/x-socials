@@ -7,18 +7,18 @@ function makeUser(overrides = {}) {
 
 function makeUserRepo(overrides: Record<string, any> = {}) {
   return {
-    findById: vi.fn().mockResolvedValue(makeUser()),
+    findById:    vi.fn().mockResolvedValue(makeUser()),
     findByEmail: vi.fn().mockResolvedValue(null),
     emailExists: vi.fn().mockResolvedValue(false),
-    findMany: vi.fn().mockResolvedValue([makeUser()]),
+    findMany:    vi.fn().mockResolvedValue([makeUser()]),
     // Batch fetch by id list — used by getFollowers/getFollowing
-    findByIds: vi.fn().mockResolvedValue([makeUser()]),
-    create: vi.fn().mockResolvedValue(makeUser()),
-    update: vi.fn().mockResolvedValue(makeUser({ name: 'Updated' })),
-    delete: vi.fn().mockResolvedValue(true),
-    exists: vi.fn().mockResolvedValue(false),
-    findOne: vi.fn().mockResolvedValue(null),
-    count: vi.fn().mockResolvedValue(1),
+    findByIds:   vi.fn().mockResolvedValue([makeUser()]),
+    create:      vi.fn().mockResolvedValue(makeUser()),
+    update:      vi.fn().mockResolvedValue(makeUser({ name: 'Updated' })),
+    delete:      vi.fn().mockResolvedValue(true),
+    exists:      vi.fn().mockResolvedValue(false),
+    findOne:     vi.fn().mockResolvedValue(null),
+    count:       vi.fn().mockResolvedValue(1),
     ...overrides,
   };
 }
@@ -157,14 +157,14 @@ describe('UsersService', () => {
           // findByIds is called with the batch of follower IDs
           findByIds: vi.fn().mockResolvedValue([follower]),
           // findById still needed for the guard check on the target user
-          findById: vi.fn().mockImplementation((id: string) =>
+          findById:  vi.fn().mockImplementation((id: string) =>
             Promise.resolve(id === 'user-1' ? makeUser() : null)
           ),
         },
         { findMany: vi.fn().mockResolvedValue([{ followerId: 'user-2', followingId: 'user-1' }]) }
       );
       const service = new UsersService(factory as any);
-      const result = await service.getFollowers('user-1', { limit: 20 });
+      const result  = await service.getFollowers('user-1', { limit: 20 });
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]!.id).toBe('user-2');
@@ -174,10 +174,10 @@ describe('UsersService', () => {
     it('returns empty items when nobody follows the user', async () => {
       const factory = makeFactory(
         { findByIds: vi.fn().mockResolvedValue([]) },
-        { findMany: vi.fn().mockResolvedValue([]) }
+        { findMany:  vi.fn().mockResolvedValue([]) }
       );
       const service = new UsersService(factory as any);
-      const result = await service.getFollowers('user-1', { limit: 20 });
+      const result  = await service.getFollowers('user-1', { limit: 20 });
       expect(result.items).toEqual([]);
     });
 
@@ -192,17 +192,17 @@ describe('UsersService', () => {
   describe('getFollowing()', () => {
     it('returns paginated hydrated user profiles for each followed user', async () => {
       const followed = makeUser({ id: 'user-3', email: 'c@c.com', name: 'Charlie' });
-      const factory = makeFactory(
+      const factory  = makeFactory(
         {
           findByIds: vi.fn().mockResolvedValue([followed]),
-          findById: vi.fn().mockImplementation((id: string) =>
+          findById:  vi.fn().mockImplementation((id: string) =>
             Promise.resolve(id === 'user-1' ? makeUser() : null)
           ),
         },
         { findMany: vi.fn().mockResolvedValue([{ followerId: 'user-1', followingId: 'user-3' }]) }
       );
       const service = new UsersService(factory as any);
-      const result = await service.getFollowing('user-1', { limit: 20 });
+      const result  = await service.getFollowing('user-1', { limit: 20 });
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]!.id).toBe('user-3');
@@ -211,11 +211,34 @@ describe('UsersService', () => {
     it('returns empty items when user follows nobody', async () => {
       const factory = makeFactory(
         { findByIds: vi.fn().mockResolvedValue([]) },
-        { findMany: vi.fn().mockResolvedValue([]) }
+        { findMany:  vi.fn().mockResolvedValue([]) }
       );
       const service = new UsersService(factory as any);
-      const result = await service.getFollowing('user-1', { limit: 20 });
+      const result  = await service.getFollowing('user-1', { limit: 20 });
       expect(result.items).toEqual([]);
+    });
+  });
+
+  describe('listUsers()', () => {
+    it('returns offset-paginated profiles with email omitted', async () => {
+      const factory = makeFactory({ count: vi.fn().mockResolvedValue(3) });
+      const service = new UsersService(factory as any);
+      const result = await service.listUsers({ page: 1, limit: 20 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).not.toHaveProperty('email');
+      expect(result.meta.total).toBe(3);
+    });
+
+    it('passes skip based on page and limit to the repo', async () => {
+      const factory = makeFactory();
+      const service = new UsersService(factory as any);
+      await service.listUsers({ page: 2, limit: 10 });
+
+      expect(factory._userRepo.findMany).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ limit: 10, skip: 10 })
+      );
     });
   });
 

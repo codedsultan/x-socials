@@ -55,7 +55,8 @@ export function isUidV7(id: string): boolean {
  */
 export function getTimestampFromUid(id: string): Date | null {
     if (!isUidV7(id)) return null;
-    const timestampMs = parseInt(id.substring(0, 12), 16);
+    // First 48 bits of UUID v7 encode the timestamp; skip the dash at position 8.
+    const timestampMs = parseInt(id.slice(0, 8) + id.slice(9, 13), 16);
     return new Date(timestampMs);
 }
 

@@ -6,466 +6,378 @@
 [![pnpm](https://img.shields.io/badge/pnpm-10.0-orange)](https://pnpm.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A robust Node.js TypeScript application with Express, featuring multi-database support (MongoDB + SQL), environment-based configuration, comprehensive logging, Swagger documentation, and CI/CD pipelines.
+A Node.js / TypeScript social platform API built with Express, featuring multi-database support (MongoDB + SQL), a full transactional email system with BullMQ queue, OTP-based auth flows, and comprehensive observability.
 
 ---
 
 ## Features
 
-- **TypeScript** — Type-safe code with full TypeScript support
-- **Express.js** — Fast, unopinionated web framework
-- **Multi-Database Architecture** — MongoDB for document storage + configurable SQL database (MySQL/PostgreSQL/SQLite)
-- **Environment Configuration** — Development, Staging, and Production environments
-- **Swagger/OpenAPI** — Automatic API documentation
-- **Winston Logger** — Structured logging with environment-based formatting
-- **Database Migrations** — CLI-based migrations with rollback support
-- **Repository Pattern** — Clean separation of data access logic
-- **Testing** — Vitest for unit and integration tests
-- **pnpm** — Fast, disk-efficient package manager
-- **CI/CD Ready** — GitHub Actions workflows for automated testing and deployment
+- **TypeScript** — strict mode throughout, `strict_types` on every file
+- **Express.js** — modular router, single-action controllers, service-layer business logic
+- **Multi-Database** — MongoDB for documents (posts, comments, likes) + configurable SQL (MySQL / PostgreSQL / SQLite) for users, tokens, OTPs
+- **Auth** — JWT access tokens + refresh token rotation, email verification, password reset
+- **Email** — provider-agnostic SMTP driver (Brevo-compatible), typed template system, BullMQ queue with retry
+- **OTP** — crypto-safe 6-digit codes, 10-minute TTL, per-purpose invalidation
+- **BullMQ Queue** — background email worker with exponential backoff; falls back to inline send in local dev
+- **Rate Limiting** — per-route limiters (auth: 10/15 min, write: 30/min, api: 100/min)
+- **Observability** — OpenTelemetry, Prometheus metrics on `:9464/metrics`, `/health`, `/ready`, `/live` probes
+- **Swagger/OpenAPI** — auto-generated docs in dev/staging
+- **Winston Logger** — structured, environment-aware logging
+- **Migrations** — Knex CLI with rollback support
+- **Testing** — Vitest, 390+ tests, coverage gates (65% statements/functions/lines, 55% branches)
 
 ---
 
 ## Prerequisites
 
-- Node.js v20 or higher
-- pnpm v10 or higher (`npm install -g pnpm`)
-- MongoDB (required)
-- One SQL database: MySQL, PostgreSQL, or SQLite (SQLite works out of the box)
+- Node.js v20+
+- pnpm v10+ (`npm install -g pnpm`)
+- MongoDB
+- One SQL database: MySQL, PostgreSQL, or SQLite
+- Redis (required in staging/production for the email queue; optional locally)
 
 ---
 
 ## Quick Start
 
 ```bash
-# Clone the repository
 git clone https://github.com/codedsultan/x-socials
 cd x-socials
 
-# Install dependencies
 pnpm install
-
-# Copy environment variables
 cp .env.example .env
+# Edit .env — minimum: JWT_SECRET, MONGO_URI, and your SQL vars
 
-# Start development server
+pnpm migrate:up
 pnpm dev
 ```
 
----
-
-## Database Configuration
-
-The application supports MongoDB + one SQL database of your choice. SQL database is configured via the `SQL_DB` environment variable.
-
-### Supported SQL Databases
-
-| Database | `SQL_DB` value | Development | Production |
-|----------|---------------|-------------|------------|
-| MySQL | `mysql` | ✅ Default | ✅ |
-| PostgreSQL | `postgres` | ✅ (via `SQL_DB=postgres`) | ✅ Recommended |
-| SQLite | `sqlite` | ✅ (testing/lightweight) | ❌ Not recommended |
-
-### Example Configurations
-
-**Development with MySQL (default)**
-```env
-SQL_DB=mysql
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_DATABASE=x_socials_dev
-MYSQL_USER=root
-MYSQL_PASSWORD=yourpassword
-```
-
-**Development with PostgreSQL**
-```env
-SQL_DB=postgres
-PG_HOST=localhost
-PG_PORT=5432
-PG_DATABASE=x_socials_dev
-PG_USER=postgres
-PG_PASSWORD=yourpassword
-PG_SSL=false
-```
-
-**Production with PostgreSQL**
-```env
-SQL_DB=postgres
-PG_HOST=cluster-production-shared-postgres
-PG_PORT=5432
-PG_DATABASE=x_socials_production
-PG_USER=x_socials
-PG_PASSWORD=${PG_PASSWORD}
-PG_SSL=true
-```
-
-**Testing with SQLite (fast, no setup)**
-```env
-SQL_DB=sqlite
-SQLITE_FILENAME=./data/test.sqlite
-```
-
-### Model Routing
-
-All SQL models (User, Otp, Token) use the same configured SQL database. MongoDB is used for document-based models (Post, Comment, Like).
-
----
-
-## Available Scripts
-
-### Development
-| Script | Description |
-|--------|-------------|
-| `pnpm dev` | Start development server with hot reload |
-| `pnpm build` | Compile TypeScript to JavaScript |
-| `pnpm start` | Start production server |
-
-### Database Migrations
-| Script | Description |
-|--------|-------------|
-| `pnpm migrate:create` | Create a new migration file |
-| `pnpm migrate:up` | Run pending migrations |
-| `pnpm migrate:down` | Rollback last migration batch |
-| `pnpm migrate:status` | Show migration status |
-| `pnpm db:reset` | Drop all tables, run migrations, seed data |
-| `pnpm db:drop` | Drop all tables |
-| `pnpm db:seed` | Seed database with test data |
-
-### Testing
-| Script | Description |
-|--------|-------------|
-| `pnpm test` | Run tests in watch mode |
-| `pnpm test:run` | Run tests once |
-| `pnpm test:coverage` | Run tests with coverage report |
-| `pnpm test:mysql` | Run tests against MySQL |
-| `pnpm test:postgres` | Run tests against PostgreSQL |
-| `pnpm test:sqlite` | Run tests against SQLite |
-| `pnpm test:mongodb` | Test MongoDB connection and data |
-
----
-
-## Environment Variables
-
-### Required
-```env
-PORT=4000                    # Server port
-NODE_ENV=development         # development | staging | production | test
-SQL_DB=mysql                 # mysql | postgres | sqlite
-MONGO_URI=mongodb://localhost:27017
-JWT_SECRET=your-secret-key
-```
-
-### SQL Database (choose one based on SQL_DB)
-
-**MySQL**
-```env
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_DATABASE=x_socials
-MYSQL_USER=root
-MYSQL_PASSWORD=secret
-MYSQL_CLIENT=mysql2
-```
-
-**PostgreSQL**
-```env
-PG_HOST=localhost
-PG_PORT=5432
-PG_DATABASE=x_socials
-PG_USER=postgres
-PG_PASSWORD=secret
-PG_SSL=false
-PG_CLIENT=pg
-```
-
-**SQLite**
-```env
-SQLITE_FILENAME=./data/x_socials.sqlite
-SQLITE_CLIENT=better-sqlite3
-```
-
-### Optional
-```env
-# Database Mode
-DB_MODE=split                # split | single
-DEFAULT_DB=mongodb           # Default database for unbound models
-
-# Auto-migrations (default: true in dev, false in prod)
-AUTO_MIGRATE=false
-
-# Application
-API_BASE_URL=http://localhost:4000
-API_PREFIX=/api
-CORS_ENABLED=true
-ENABLE_SWAGGER=true
-SERVER_MAINTENANCE=false
-
-# JWT
-JWT_EXPIRES_IN=7d
-
-# Logging
-LOG_DAYS=14
-
-# External Services
-SENDGRID_API_KEY=your-key
-SMTP_FROM=noreply@example.com
-CLOUDINARY_CLOUD_NAME=your-cloud
-CLOUDINARY_API_KEY=your-key
-CLOUDINARY_API_SECRET=your-secret
-```
+The API starts on `http://localhost:4000`.
 
 ---
 
 ## Project Structure
 
 ```
-x-socials/
-├── src/
-│   ├── app/
-│   │   └── index.ts              # Express app configuration
-│   ├── config/
-│   │   ├── config.service.ts     # Unified configuration (singleton)
-│   │   ├── database.config.ts    # Database container builder
-│   │   └── swagger.ts            # Swagger/OpenAPI setup
-│   ├── database/
-│   │   ├── adapters/
-│   │   │   ├── MongooseAdapter.ts   # MongoDB adapter
-│   │   │   └── KnexAdapter.ts       # SQL adapter (MySQL/PostgreSQL/SQLite)
-│   │   ├── core/
-│   │   │   ├── DbRegistry.ts     # Named adapter registry
-│   │   │   └── DbResolver.ts     # Model → adapter router
-│   │   ├── migrations/           # Migration files
-│   │   └── initializer.ts        # Database lifecycle manager
-│   ├── repositories/
-│   │   ├── BaseRepository.ts     # Base CRUD operations
-│   │   ├── UserRepository.ts     # User-specific queries
-│   │   ├── PostRepository.ts     # Post-specific queries
-│   │   └── ...
-│   ├── factories/
-│   │   └── RepositoryFactory.ts  # Repository instance factory
-│   ├── interfaces/
-│   │   └── core/
-│   │       ├── config.ts         # TypeScript interfaces
-│   │       ├── db-types.ts       # Database type definitions
-│   │       └── IAdapter.ts       # Adapter interface
-│   ├── middlewares/              # Express middleware
-│   ├── exceptions/               # Error handling
-│   ├── logger/                   # Winston logger
-│   ├── models/                   # Schema definitions
-│   └── index.ts                  # Application entry point
-├── scripts/
-│   ├── db/                       # Database management scripts
-│   │   ├── drop.ts
-│   │   ├── reset.ts
-│   │   ├── seed.ts
-│   │   └── update-likes.ts
-│   └── migrations/               # Migration CLI scripts
-│       ├── create.ts
-│       ├── up.ts
-│       ├── down.ts
-│       └── status.ts
-├── src/__tests__/                # Test files
-├── .github/workflows/            # CI/CD pipelines
-├── .env.example
-├── package.json
-├── tsconfig.json
-├── vitest.config.ts
-└── README.md
+src/
+  app/                        # ExpressApp class — mounts middleware and routers
+  config/                     # ConfigService singleton, Swagger setup
+  database/
+    adapters/                 # KnexAdapter (SQL), MongooseAdapter
+    core/                     # DbRegistry, DbResolver, RepositoryFactory
+    initializer.ts            # Database lifecycle manager
+  modules/                    # Feature modules — one folder per domain
+    auth/                     # register, login, refresh, logout, me,
+    │                         # email verification, password reset
+    users/
+    posts/
+    comments/
+    likes/
+    feed/
+    notifications/
+  repositories/               # Data access — BaseRepository + per-model
+  services/
+    email/
+      drivers/                # IEmailDriver interface + SmtpDriver (nodemailer)
+      templates/              # base.layout, otp-block partial, per-type templates
+      EmailService.ts         # sendTemplate(type, to, data) facade
+    otp/
+      OtpService.ts           # issue(), verify() — crypto.randomInt, expiry enforcement
+  queue/
+    emailQueue.ts             # BullMQ Queue, enqueueEmail() typed helper
+  workers/
+    emailWorker.ts            # Standalone worker process
+  shared/                     # Middleware, error helpers, response helpers
+  logger/                     # Winston
+  index.ts                    # Composition root
+database/
+  migrations/                 # Knex migration files
+scripts/                      # db:reset, db:seed, migrate CLI
 ```
+
+---
+
+## Module Structure
+
+Each feature lives in `src/modules/<name>/` with exactly five files:
+
+```
+<name>.routes.ts      # Express Router — wires rate limiters, auth, validate, controller
+<name>.controller.ts  # Thin handler — parses req, calls service, sends response
+<name>.service.ts     # All business logic — receives repoFactory and scalar IDs only
+<name>.validator.ts   # Zod schemas exported as ready-to-use middleware
+<name>.types.ts       # DTOs and response shapes
+__tests__/            # Unit tests co-located with the module
+```
+
+No logic in controllers or routes. Services never touch `req`/`res`.
 
 ---
 
 ## API Endpoints
 
-**Base URL:** `http://localhost:4000`
+**Base URL:** `http://localhost:4000/api`
 
 ### Health & Status
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | Welcome message with environment info |
-| GET | `/health` | Server health + database status |
-| GET | `/ready` | Kubernetes readiness probe |
-| GET | `/live` | Kubernetes liveness probe |
+| GET | `/` | Welcome + environment info |
+| GET | `/health` | Server health + DB status |
+| GET | `/ready` | Readiness probe |
+| GET | `/live` | Liveness probe |
 
-### API Routes
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/environment` | Current environment configuration |
-| GET | `/api/users` | Get all users |
-| GET | `/api/posts` | Get all posts |
-| GET | `/api/posts/:id` | Get single post |
-| POST | `/api/posts` | Create a new post |
-| PUT | `/api/posts/:id` | Update a post |
-| DELETE | `/api/posts/:id` | Delete a post |
-| POST | `/api/posts/:id/like` | Like a post |
-| GET | `/api/posts/author/:authorId` | Get posts by author |
-| GET | `/api/posts/tag/:tag` | Get posts by tag |
+### Auth (`/api/auth`)
 
-### Documentation
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api-docs` | Swagger UI (dev/staging only) |
-| GET | `/api-docs.json` | Swagger JSON specification |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/register` | — | Create account; fires verification email |
+| POST | `/login` | — | Returns access + refresh tokens |
+| POST | `/refresh` | — | Rotate refresh token |
+| POST | `/logout` | ✓ | Revoke all sessions |
+| GET | `/me` | ✓ | Current user |
+| POST | `/email/request` | ✓ | Resend email verification OTP |
+| POST | `/email/verify` | ✓ | Submit OTP, marks `email_verified_at` |
+| POST | `/password/forgot` | — | Request reset OTP (always 204 — prevents enumeration) |
+| POST | `/password/reset` | — | Submit OTP + new password, revokes all sessions |
 
-### Example Responses
+### Users (`/api/users`)
 
-**GET `/health`**
-```json
-{
-  "status": "OK",
-  "environment": "development",
-  "maintenance": false,
-  "database": {
-    "mongodb": true,
-    "mysql": true
-  },
-  "timestamp": "2026-05-13T17:30:00.000Z",
-  "version": "1.0.0"
-}
-```
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/` | — | List users |
+| GET | `/:id` | — | User profile |
+| PATCH | `/me` | ✓ | Update own profile |
+| POST | `/:id/follow` | ✓ | Follow |
+| DELETE | `/:id/follow` | ✓ | Unfollow |
 
-**GET `/api/posts`**
-```json
-{
-  "posts": [
-    {
-      "id": "019e23ab-ae34-759f-a6be-04a6f554b409",
-      "title": "Welcome to the Platform!",
-      "content": "This is your first post...",
-      "authorId": "user1-id",
-      "tags": ["welcome", "introduction"],
-      "likesCount": 5,
-      "createdAt": "2026-05-13T17:28:34.000Z",
-      "updatedAt": "2026-05-13T17:28:34.000Z"
-    }
-  ],
-  "count": 3
-}
-```
+### Posts (`/api/posts`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/` | — | List (filter by tag, author) |
+| POST | `/` | ✓ | Create post |
+| GET | `/:id` | — | Single post |
+| PATCH | `/:id` | ✓ | Update post |
+| DELETE | `/:id` | ✓ | Delete post |
+
+### Comments, Likes, Feed, Notifications
+
+| Prefix | Key endpoints |
+|--------|---------------|
+| `/api/posts/:postId/comments` | GET, POST; replies via `?parentId=` |
+| `/api/comments/:id` | PATCH, DELETE |
+| `/api/likes` | POST toggle (post or comment) |
+| `/api/feed` | GET home feed (cursor pagination) |
+| `/api/notifications` | GET list, PATCH `:id/read` |
 
 ---
 
-## Database Migrations
+## Email System
 
-### Creating Migrations
-```bash
-# Create a new migration
-pnpm migrate:create create_users_table
+### Architecture
+
+```
+Auth flows (register, forgot-password)
+  └── enqueueEmail(type, to, data)        ← always call this, never EmailService directly
+        ├── EMAIL_QUEUE=true  → BullMQ → emailWorker → EmailService.sendTemplate()
+        └── EMAIL_QUEUE unset → inline fire-and-forget (local dev, no Redis needed)
+
+EmailService.sendTemplate(type, to, data)
+  └── templates/index.ts (registry)
+        ├── email-verification.template.ts
+        ├── password-reset.template.ts
+        └── login-otp.template.ts
+              └── base.layout.ts + partials/otp-block.partial.ts
+  └── SmtpDriver (nodemailer → Brevo SMTP)
 ```
 
-### Running Migrations
+### Adding a new email type
+
+1. Create `src/services/email/templates/your-type.template.ts` — export `subject`, `html(data)`, `text(data)` and a typed data interface.
+2. In `templates/index.ts`: add to `EmailType`, `EmailDataMap`, and the `templates` map.
+3. Call `await enqueueEmail('your-type', to, data)`.
+
+### Email worker
+
+The worker runs as a separate process alongside the API:
+
 ```bash
-# Run all pending migrations
-pnpm migrate:up
-
-# Check migration status
-pnpm migrate:status
-
-# Rollback last batch
-pnpm migrate:down
-
-# Rollback 3 batches
-pnpm migrate:down 3
-
-# Rollback all migrations
-pnpm migrate:down --all
+pnpm worker        # production: node dist/workers/emailWorker.js
+pnpm worker:dev    # dev:        tsx src/workers/emailWorker.ts
 ```
 
-### Complete Reset
-```bash
-# Drop all tables, run migrations, seed data
-pnpm db:reset
+Job config: 3 attempts, exponential backoff (5s → 10s → 20s). Failed jobs retained for 500 entries, completed for 100.
 
-# Reset without seeding
-pnpm db:reset --no-seed
+---
 
-# Drop tables only
-pnpm db:reset --drop-only
+## Database Configuration
+
+### Model routing
+
+| Model | Database |
+|-------|----------|
+| User, Otp, Token | SQL (configured via `SQL_DB`) |
+| Post, Comment, Like | MongoDB |
+
+### SQL databases
+
+| Database | `SQL_DB` | Notes |
+|----------|----------|-------|
+| MySQL | `mysql` | Default |
+| PostgreSQL | `postgres` | Recommended for production |
+| SQLite | `sqlite` | Zero-setup for local dev and tests |
+
+---
+
+## Available Scripts
+
+### Development
+
+| Script | Description |
+|--------|-------------|
+| `pnpm dev` | Hot reload via `tsx --watch` |
+| `pnpm build` | Compile TypeScript → `dist/` |
+| `pnpm start` | Run `dist/index.js` |
+| `pnpm worker` | Run email worker (production) |
+| `pnpm worker:dev` | Run email worker (dev, tsx) |
+| `pnpm lint` | Type-check only (`tsc --noEmit`) |
+
+### Database
+
+| Script | Description |
+|--------|-------------|
+| `pnpm migrate:create` | New migration file |
+| `pnpm migrate:up` | Run pending migrations |
+| `pnpm migrate:down` | Rollback last batch |
+| `pnpm migrate:status` | Show status |
+| `pnpm db:reset` | Drop → migrate → seed |
+| `pnpm db:seed` | Seed test data |
+| `pnpm db:drop` | Drop all tables |
+
+### Testing
+
+| Script | Description |
+|--------|-------------|
+| `pnpm test` | Run all tests (sequential) |
+| `pnpm test:watch` | Watch mode |
+| `pnpm test:coverage` | Coverage report |
+
+---
+
+## Environment Variables
+
+### Required
+
+```env
+PORT=4000
+NODE_ENV=development          # development | staging | production | test
+JWT_SECRET=                   # min 32 chars in production
+MONGO_URI=mongodb://localhost:27017
+SQL_DB=mysql                  # mysql | postgres | sqlite
+```
+
+### SQL (choose one)
+
+```env
+# MySQL
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=x_socials
+MYSQL_USER=root
+MYSQL_PASSWORD=secret
+
+# PostgreSQL
+PG_HOST=localhost
+PG_PORT=5432
+PG_DATABASE=x_socials
+PG_USER=postgres
+PG_PASSWORD=secret
+PG_SSL=false
+
+# SQLite
+SQLITE_FILENAME=./data/x_socials.sqlite
+```
+
+### Email (SMTP — Brevo or any provider)
+
+```env
+SMTP_HOST=smtp-relay.brevo.com   # Brevo relay host
+SMTP_PORT=587                    # 587 (STARTTLS) or 465 (SSL)
+SMTP_USER=your-brevo-login@example.com
+SMTP_KEY=your-brevo-smtp-key     # Settings → SMTP & API → SMTP tab
+SMTP_FROM=noreply@x-socials.com
+```
+
+### Queue & Redis
+
+```env
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+# Controls email delivery mode:
+#   unset / false → inline fire-and-forget (local dev, no Redis needed)
+#   true          → BullMQ queue via emailWorker (staging / production)
+EMAIL_QUEUE=false
+```
+
+### Optional
+
+```env
+JWT_EXPIRES_IN=7d
+DB_MODE=split                 # split | single
+AUTO_MIGRATE=false
+ENABLE_SWAGGER=true
+SERVER_MAINTENANCE=false
+PROMETHEUS_METRICS_PORT=9464
+LOG_DAYS=14
 ```
 
 ---
 
 ## Testing
 
-### Run tests with different databases
-```bash
-# Default (SQLite - fast, no setup)
-pnpm test
+Service tests use repo fakes — no real database needed:
 
-# Run against MySQL (requires MySQL running)
-pnpm test:mysql
-
-# Run against PostgreSQL (requires PostgreSQL running)
-pnpm test:postgres
-
-# Run against SQLite
-pnpm test:sqlite
-
-# Test MongoDB connection and data
-pnpm test:mongodb
+```ts
+function makeFactory(overrides = {}) {
+  const repo = { findById: vi.fn().mockResolvedValue(entity), ...overrides };
+  return { getRepository: vi.fn(() => repo), _repo: repo };
+}
 ```
 
-### Coverage Report
-```bash
-pnpm test:coverage
+Queue calls are mocked at the module boundary:
+
+```ts
+vi.mock('../../queue/emailQueue', () => ({
+  enqueueEmail: vi.fn().mockResolvedValue(undefined),
+}));
 ```
 
----
-
-## Migration from PostgreSQL to MySQL
-
-The application supports seamless switching between SQL databases via the `SQL_DB` environment variable:
-
-1. **Update `.env`**:
-   ```env
-   SQL_DB=mysql  # Change from postgres to mysql
-   ```
-
-2. **Update connection details**:
-   ```env
-   MYSQL_HOST=localhost
-   MYSQL_DATABASE=x_socials
-   # ... MySQL config
-   ```
-
-3. **Reset and migrate**:
-   ```bash
-   pnpm db:reset
-   ```
-
-All SQL models automatically use the configured database - no code changes required!
+Coverage thresholds: 65% statements/functions/lines, 55% branches.
 
 ---
 
-## CI/CD Pipeline
+## CI/CD
 
-### Continuous Integration
-- Installs dependencies via pnpm with cache
-- Runs TypeScript type checking
-- Executes test suite with coverage upload
-- Runs security audit
-- Builds the application
-
-### Continuous Deployment (GitHub Actions)
-1. **Staging** — Deploys automatically after CI passes
-2. **Production** — Deploys after staging approval
+GitHub Actions runs on every push: type-check → test with coverage upload → security audit → build. Staging deploys automatically after CI passes; production requires approval.
 
 ---
 
-## Contributing
+## Related Services
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes: `git commit -m 'feat: add your feature'`
-4. Push to the branch: `git push origin feature/your-feature`
-5. Open a Pull Request
+| Service | Role |
+|---------|------|
+| [x-socials-web](https://github.com/codedsultan/x-socials-web) | Next.js frontend |
+| [x-socials-admin](https://github.com/codedsultan/x-socials-admin) | Laravel admin panel — review queue, dashboard |
+| [x-socials-moderator](https://github.com/codedsultan/x-socials-ai-moderator) | FastAPI AI moderation engine |
 
 ---
 
 ## License
 
-MIT License — see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE) for details.
 
 ---
 

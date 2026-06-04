@@ -12,11 +12,12 @@ class Http {
   public static mount(_express: Application): Application {
     Logger.getInstance().info("App :: Registering HTTP middleware...");
 
-    // compression (via on-finished) + morgan + monitoring + otel-http each add
-    // finish listeners to ServerResponse. Raise the per-response limit before
-    // any other middleware runs so Node never fires MaxListenersExceededWarning.
+    // Several layers add 'finish' listeners to ServerResponse: compression,
+    // morgan, monitoring, otel-http, and (when tracing is on) otel-router adds
+    // one per matched layer. Set a generous ceiling so Node never fires
+    // MaxListenersExceededWarning regardless of how deep the middleware stack grows.
     _express.use((_req: Request, res: Response, next: NextFunction) => {
-      res.setMaxListeners(20);
+      res.setMaxListeners(50);
       next();
     });
 
@@ -28,7 +29,19 @@ class Http {
 
     // Parse bodies — express 5 ships built-in json/urlencoded via body-parser;
     // registering body-parser separately would double-read the stream.
-    _express.use(json({ limit: "100mb" }));
+    //
+    // The verify callback captures the raw body buffer before it is parsed.
+    // requireAdminKey reads req.rawBody to compute the HMAC body hash; without
+    // this, req.rawBody is undefined and the signature check fails on any
+    // admin request that carries a body (POST / PATCH / PUT).
+    _express.use(
+      json({
+        limit: "100mb",
+        verify: (req: Request, _res: Response, buf: Buffer) => {
+          (req as any).rawBody = buf.toString("utf8");
+        },
+      })
+    );
     _express.use(urlencoded({ extended: true, limit: "100mb" }));
 
     // Trust proxy (for reverse proxies / load balancers)

@@ -1,10 +1,12 @@
 import type { SchemaDefinition } from 'mongoose';
 
 export const commentMongoSchema: SchemaDefinition = {
-    postId:   { type: String, required: true },
+    postId: { type: String, required: true },
     authorId: { type: String, required: true },
-    content:  { type: String, required: true, trim: true },
+    content: { type: String, required: true, trim: true },
     parentId: { type: String, default: null },
+    deletedAt: { type: Date, default: null },
+    deletionReason: { type: String, default: null },  // 'admin_removed' | 'author_deleted'
 };
 
 /**
@@ -27,5 +29,9 @@ export const commentSchemaIndexes = [
     {
         fields: { parentId: 1 },
         options: { sparse: true, name: 'idx_comments_parent' },
+    },
+    {
+        fields: { createdAt: 1 },
+        options: { name: 'idx_comments_created_at' },
     },
 ] as const;

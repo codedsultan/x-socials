@@ -5,7 +5,9 @@ export interface UpdateProfileDto {
 export interface UserProfile {
   id: string;
   name?: string;
+  /** Only populated for the authenticated user's own profile */
   email?: string;
+  suspended?: boolean;
   createdAt?: Date;
   followerCount?: number;
   followingCount?: number;

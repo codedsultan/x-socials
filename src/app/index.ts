@@ -155,45 +155,170 @@ export class ExpressApp {
         this._app = ExceptionHandler.notFoundHandler(this._app);
     }
 
+    // async _init(): Promise<void> {
+    //     Logger.getInstance().info('Server :: Starting...');
+    //     // In development, run migrations automatically
+    //     // In production, migrations should be run separately via CI/CD
+    //     const env = process.env['NODE_ENV'] ?? 'development';
+    //     const runMigrations = env === 'development' || process.env['AUTO_MIGRATE'] === 'true';
+
+    //     await this.db.initialize({ skipMigrations: !runMigrations });
+
+    //     const port = ConfigService.getPort();
+    //     this.server = this._app.listen(port, () => {
+    //         const actualPort = (this.server?.address() as any)?.port || port;
+    //         Logger.getInstance().info(`🚀 Server running on http://localhost:${actualPort}`);
+    //         Logger.getInstance().info(`📦 Environment: ConfigService.getNodeEnv().toUpperCase()`);
+    //         Logger.getInstance().info(`🗄️  Database mode: active`);
+    //         Logger.getInstance().info(`🔄 Migrations: ${runMigrations ? 'auto' : 'manual'}`);
+    //     }).on('error', (err: Error) => {
+    //         if (err.message.includes('EADDRINUSE')) {
+    //             Logger.getInstance().error(`Port ${port} is in use. Waiting 1 second and retrying...`);
+    //             setTimeout(() => {
+    //                 this.server = this._app.listen(port);
+    //             }, 1000);
+    //         } else {
+    //             Logger.getInstance().error(`Server error: ${err.message}`);
+    //             process.exit(1);
+    //         }
+    //     });
+
+    //     this._setupGracefulShutdown();
+    //     Logger.getInstance().info('App :: Started');
+    // }
+
+    // Add this property to the class
+    private isShuttingDown = false;
+    private retryCount = 0;
+    private readonly maxRetries = 3;
+
     async _init(): Promise<void> {
         Logger.getInstance().info('Server :: Starting...');
-        // In development, run migrations automatically
-        // In production, migrations should be run separately via CI/CD
+
+        // Add delay in development
+        if (process.env.NODE_ENV === 'development') {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
         const env = process.env['NODE_ENV'] ?? 'development';
         const runMigrations = env === 'development' || process.env['AUTO_MIGRATE'] === 'true';
 
         await this.db.initialize({ skipMigrations: !runMigrations });
 
         const port = ConfigService.getPort();
-        this.server = this._app.listen(port, () => {
-            const actualPort = (this.server?.address() as any)?.port || port;
-            Logger.getInstance().info(`🚀 Server running on http://localhost:${actualPort}`);
-            Logger.getInstance().info(`📦 Environment: ConfigService.getNodeEnv().toUpperCase()`);
-            Logger.getInstance().info(`🗄️  Database mode: active`);
-            Logger.getInstance().info(`🔄 Migrations: ${runMigrations ? 'auto' : 'manual'}`);
-        }).on('error', (err: Error) => {
-            Logger.getInstance().error(`Server error: ${err.message}`);
-        });
 
+        // const startServer = () => {
+        //     this.server = this._app.listen(port, () => {
+        //         this.retryCount = 0; // Reset retry count on success
+        //         const actualPort = (this.server?.address() as any)?.port || port;
+        //         Logger.getInstance().info(`🚀 Server running on http://localhost:${actualPort}`);
+        //         Logger.getInstance().info(`📦 Environment: ${ConfigService.getNodeEnv().toUpperCase()}`);
+        //         Logger.getInstance().info(`🗄️  Database mode: active`);
+        //         Logger.getInstance().info(`🔄 Migrations: ${runMigrations ? 'auto' : 'manual'}`);
+        //     }).on('error', (err: NodeJS.ErrnoException) => {
+        //         if (err.code === 'EADDRINUSE') {
+        //             this.retryCount++;
+        //             if (this.retryCount <= this.maxRetries) {
+        //                 Logger.getInstance().warn(`Port ${port} in use (attempt ${this.retryCount}/${this.maxRetries}), retrying in 2s...`);
+        //                 setTimeout(startServer, 2000);
+        //             } else {
+        //                 Logger.getInstance().error(`Failed to bind to port ${port} after ${this.maxRetries} attempts`);
+        //                 process.exit(1);
+        //             }
+        //         } else {
+        //             Logger.getInstance().error(`Server error: ${err.message}`);
+        //             process.exit(1);
+        //         }
+        //     });
+        // };
+        const startServer = () => {
+            let isListening = false;
+
+            this.server = this._app.listen(port, () => {
+                if (!isListening) {
+                    isListening = true;
+                    this.retryCount = 0;
+                    const actualPort = (this.server?.address() as any)?.port || port;
+                    Logger.getInstance().info(`🚀 Server running on http://localhost:${actualPort}`);
+                    Logger.getInstance().info(`📦 Environment: ${ConfigService.getNodeEnv().toUpperCase()}`);
+                    Logger.getInstance().info(`🗄️  Database mode: active`);
+                    Logger.getInstance().info(`🔄 Migrations: ${runMigrations ? 'auto' : 'manual'}`);
+                }
+            });
+
+            this.server.on('error', (err: NodeJS.ErrnoException) => {
+                if (isListening) return; // Ignore errors after successful bind
+
+                if (err.code === 'EADDRINUSE') {
+                    this.retryCount++;
+                    if (this.retryCount <= this.maxRetries) {
+                        Logger.getInstance().warn(`Port ${port} in use (attempt ${this.retryCount}/${this.maxRetries}), retrying in 2s...`);
+                        setTimeout(startServer, 2000);
+                    } else {
+                        Logger.getInstance().error(`Failed to bind to port ${port} after ${this.maxRetries} attempts`);
+                        process.exit(1);
+                    }
+                } else {
+                    Logger.getInstance().error(`Server error: ${err.message}`);
+                    process.exit(1);
+                }
+            });
+        };
+        startServer();
         this._setupGracefulShutdown();
         Logger.getInstance().info('App :: Started');
     }
 
     async _close(): Promise<void> {
+        if (this.isShuttingDown) return;
+        this.isShuttingDown = true;
+
         Logger.getInstance().info('Server :: Stopping...');
-        await shutdownTelemetry();
-        await this.db.shutdown();
-        return new Promise((resolve) => {
-            if (this.server) {
-                this.server.close(() => {
-                    Logger.getInstance().info('Server :: Stopped');
+
+        // Force exit after 5 seconds if graceful shutdown hangs
+        const forceExit = setTimeout(() => {
+            Logger.getInstance().warn('Force exiting due to shutdown timeout');
+            process.exit(0);
+        }, 5000);
+
+        try {
+            await shutdownTelemetry();
+            await this.db.shutdown();
+
+            return new Promise((resolve) => {
+                if (this.server && this.server.listening) {
+                    this.server.close(() => {
+                        Logger.getInstance().info('Server :: Stopped');
+                        clearTimeout(forceExit);
+                        resolve();
+                    });
+                } else {
+                    clearTimeout(forceExit);
                     resolve();
-                });
-            } else {
-                resolve();
-            }
-        });
+                }
+            });
+        } catch (error) {
+            Logger.getInstance().error(`Error during shutdown: ${error}`);
+            clearTimeout(forceExit);
+            process.exit(1);
+        }
     }
+
+    // async _close(): Promise<void> {
+    //     Logger.getInstance().info('Server :: Stopping...');
+    //     await shutdownTelemetry();
+    //     await this.db.shutdown();
+    //     return new Promise((resolve) => {
+    //         if (this.server) {
+    //             this.server.close(() => {
+    //                 Logger.getInstance().info('Server :: Stopped');
+    //                 resolve();
+    //             });
+    //         } else {
+    //             resolve();
+    //         }
+    //     });
+    // }
 
     private _setupGracefulShutdown(): void {
         const shutdown = async (): Promise<void> => {
@@ -201,8 +326,8 @@ export class ExpressApp {
             await this._close();
             process.exit(0);
         };
-        process.on('SIGTERM', shutdown);
-        process.on('SIGINT', shutdown);
+        process.once('SIGTERM', shutdown);
+        process.once('SIGINT', shutdown);
     }
 }
 

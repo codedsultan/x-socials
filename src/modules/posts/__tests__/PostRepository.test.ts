@@ -7,8 +7,7 @@ function makePost(overrides = {}) {
 
 function makeMongoAdapter(overrides: Record<string, any> = {}) {
   return {
-    // Presence of `models` property signals MongooseAdapter to PostRepository
-    models: new Map(),
+    adapterType: 'mongo' as const,
     findMany: vi.fn().mockResolvedValue([makePost()]),
     findOne: vi.fn().mockResolvedValue(makePost()),
     findById: vi.fn().mockResolvedValue(makePost()),
@@ -22,13 +21,15 @@ function makeMongoAdapter(overrides: Record<string, any> = {}) {
     migrate: vi.fn(),
     withTransaction: vi.fn(),
     getClient: vi.fn(),
+    count: vi.fn().mockResolvedValue(1),
+    registerModel: vi.fn(),
     ...overrides,
   };
 }
 
 function makeSqlAdapter(overrides: Record<string, any> = {}) {
   return {
-    // No `models` property → KnexAdapter branch in PostRepository
+    adapterType: 'sql' as const,
     findMany: vi.fn().mockResolvedValue([makePost()]),
     findOne: vi.fn().mockResolvedValue(makePost()),
     create: vi.fn().mockResolvedValue(makePost()),
@@ -41,6 +42,8 @@ function makeSqlAdapter(overrides: Record<string, any> = {}) {
     migrate: vi.fn(),
     withTransaction: vi.fn(),
     getClient: vi.fn(),
+    count: vi.fn().mockResolvedValue(1),
+    registerModel: vi.fn(),
     ...overrides,
   };
 }
@@ -83,7 +86,7 @@ describe('PostRepository', () => {
 
       expect(adapter.findMany).toHaveBeenCalledWith(
         'Post',
-        { authorId: 'user-42' },
+        { deletedAt: null, authorId: 'user-42' },
         { limit: 10, skip: 0 }
       );
     });
@@ -124,6 +127,176 @@ describe('PostRepository', () => {
 
       const payload = adapter.update.mock.calls[0][2] as Record<string, unknown>;
       expect(payload).not.toHaveProperty('$inc');
+    });
+  });
+
+  describe('decrementLikes()', () => {
+    it('uses aggregation pipeline with $max floor for Mongo adapter', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.decrementLikes('post-1');
+
+      const payload = adapter.update.mock.calls[0][2];
+      expect(Array.isArray(payload)).toBe(true);
+      expect((payload as any[])[0]).toMatchObject({ $set: { likesCount: expect.any(Object) } });
+    });
+
+    it('uses likesCountIncrement with floor for SQL adapter', async () => {
+      const adapter = makeSqlAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.decrementLikes('post-1');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post',
+        'post-1',
+        expect.objectContaining({ likesCountIncrement: { value: -1, floor: 0 } })
+      );
+    });
+  });
+
+  describe('decrementComments()', () => {
+    it('uses aggregation pipeline with $max floor for Mongo adapter', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.decrementComments('post-1');
+
+      const payload = adapter.update.mock.calls[0][2];
+      expect(Array.isArray(payload)).toBe(true);
+      expect((payload as any[])[0]).toMatchObject({ $set: { commentsCount: expect.any(Object) } });
+    });
+
+    it('uses commentsCountIncrement with floor for SQL adapter', async () => {
+      const adapter = makeSqlAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.decrementComments('post-1');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post',
+        'post-1',
+        expect.objectContaining({ commentsCountIncrement: { value: -1, floor: 0 } })
+      );
+    });
+  });
+
+  describe('incrementComments()', () => {
+    it('uses $inc for Mongo adapter', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.incrementComments('post-1');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post', 'post-1',
+        expect.objectContaining({ $inc: { commentsCount: 1 } })
+      );
+    });
+
+    it('uses commentsCountIncrement for SQL adapter', async () => {
+      const adapter = makeSqlAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.incrementComments('post-1');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post', 'post-1',
+        expect.objectContaining({ commentsCountIncrement: 1 })
+      );
+    });
+  });
+
+  describe('findById()', () => {
+    it('returns null when post is soft-deleted', async () => {
+      const adapter = makeMongoAdapter({
+        findOne: vi.fn().mockResolvedValue(makePost({ deletedAt: new Date() })),
+      });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      expect(await repo.findById('post-1')).toBeNull();
+    });
+
+    it('returns the post when not soft-deleted', async () => {
+      const adapter = makeMongoAdapter({
+        findOne: vi.fn().mockResolvedValue(makePost({ deletedAt: null })),
+      });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      expect(await repo.findById('post-1')).toMatchObject({ id: 'post-1' });
+    });
+
+    it('returns null when post is not found', async () => {
+      const adapter = makeMongoAdapter({ findOne: vi.fn().mockResolvedValue(null) });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      expect(await repo.findById('post-1')).toBeNull();
+    });
+  });
+
+  describe('findByIdRaw()', () => {
+    it('returns soft-deleted posts (bypasses filter)', async () => {
+      const deleted = makePost({ deletedAt: new Date() });
+      const adapter = makeMongoAdapter({ findOne: vi.fn().mockResolvedValue(deleted) });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      const result = await repo.findByIdRaw('post-1');
+
+      expect(result).toMatchObject({ deletedAt: expect.any(Date) });
+    });
+  });
+
+  describe('findByAuthorIds()', () => {
+    it('returns empty array immediately for empty input', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      const result = await repo.findByAuthorIds([]);
+
+      expect(result).toEqual([]);
+      expect(adapter.findMany).not.toHaveBeenCalled();
+    });
+
+    it('calls findMany with notDeleted filter and author id list', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.findByAuthorIds(['u1', 'u2'], { limit: 5 });
+
+      expect(adapter.findMany).toHaveBeenCalledWith(
+        'Post',
+        expect.objectContaining({ deletedAt: null, authorId: ['u1', 'u2'] }),
+        { limit: 5 }
+      );
+    });
+  });
+
+  describe('softDelete()', () => {
+    it('sets deletedAt and deletionReason via update', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.softDelete('post-1', 'violates TOS');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post', 'post-1',
+        expect.objectContaining({ deletedAt: expect.any(Date), deletionReason: 'violates TOS' })
+      );
+    });
+  });
+
+  describe('count()', () => {
+    it('merges the notDeleted filter with the caller filter', async () => {
+      const adapter = makeMongoAdapter({ count: vi.fn().mockResolvedValue(3) });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.count({ authorId: 'u1' } as any);
+
+      expect(adapter.count).toHaveBeenCalledWith(
+        'Post',
+        expect.objectContaining({ deletedAt: null, authorId: 'u1' })
+      );
     });
   });
 });

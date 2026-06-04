@@ -40,6 +40,14 @@ vi.mock('../../middlewares/Http', () => ({ default: { mount: vi.fn((app: unknown
 vi.mock('../../middlewares/Morgan', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
 vi.mock('../../middlewares/CORS', () => ({ default: { mount: vi.fn((app: unknown) => app) } }));
 
+// Prevent SmtpDriver from attempting real SMTP connections during integration tests
+vi.mock('../../services/email/EmailService', () => ({
+    getEmailService: vi.fn(() => ({ send: vi.fn(), sendOtp: vi.fn() })),
+    createEmailService: vi.fn(() => ({ send: vi.fn(), sendOtp: vi.fn() })),
+    resetEmailService: vi.fn(),
+    OTP_TTL_MINUTES: 10,
+}));
+
 vi.mock('../../exceptions/Handler', () => {
     function makeErrHandler(impl: (...a: any[]) => void) {
         const fn = vi.fn(impl);
@@ -109,11 +117,11 @@ describe('API Integration Tests', () => {
     });
 
     it('handles sequential requests without state leakage', async () => {
-        const [r1, r2, r3] = await Promise.all([
-            request(app.express).get('/'),
-            request(app.express).get('/health'),
-            request(app.express).get('/live'),
-        ]);
+        // Must be sequential — concurrent requests on a shared supertest server
+        // with module-level singletons (ConfigService, rate-limiter buckets) is racy.
+        const r1 = await request(app.express).get('/');
+        const r2 = await request(app.express).get('/health');
+        const r3 = await request(app.express).get('/live');
         expect(r1.status).toBe(200);
         expect(r2.status).toBe(200);
         expect(r3.status).toBe(200);
