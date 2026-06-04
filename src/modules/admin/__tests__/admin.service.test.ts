@@ -19,13 +19,14 @@ function makeFactory(
   followOverrides:  Record<string, any> = {},
 ) {
   const userRepo = {
-    findById:  vi.fn().mockResolvedValue(makeUser()),
-    findByIds: vi.fn().mockResolvedValue([makeUser()]),
-    findMany:  vi.fn().mockResolvedValue([makeUser()]),
-    count:     vi.fn().mockResolvedValue(1),
-    create:    vi.fn(), update: vi.fn(), delete: vi.fn(),
-    findOne:   vi.fn().mockResolvedValue(null),
-    exists:    vi.fn().mockResolvedValue(false),
+    findById:     vi.fn().mockResolvedValue(makeUser()),
+    findByIds:    vi.fn().mockResolvedValue([makeUser()]),
+    findMany:     vi.fn().mockResolvedValue([makeUser()]),
+    count:        vi.fn().mockResolvedValue(1),
+    create:       vi.fn(), update: vi.fn(), delete: vi.fn(),
+    findOne:      vi.fn().mockResolvedValue(null),
+    exists:       vi.fn().mockResolvedValue(false),
+    setSuspended: vi.fn().mockResolvedValue(undefined),
     ...userOverrides,
   };
   const postRepo = {
@@ -72,19 +73,23 @@ function makeFactory(
     ...followOverrides,
   };
 
+  const tokenRepo = { revokeAllForUser: vi.fn().mockResolvedValue(undefined), findMany: vi.fn().mockResolvedValue([]), delete: vi.fn() };
+  const notifRepo = { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), notify: vi.fn().mockResolvedValue(undefined) };
+
   return {
     getRepository: vi.fn((name: string) => {
-      if (name === 'User')    return userRepo;
-      if (name === 'Post')    return postRepo;
-      if (name === 'Comment') return commentRepo;
-      if (name === 'Like')    return likeRepo;
-      if (name === 'Follow')  return followRepo;
-      if (name === 'Token')   return { revokeAllForUser: vi.fn().mockResolvedValue(undefined), findMany: vi.fn().mockResolvedValue([]), delete: vi.fn() };
-      if (name === 'Notification') return { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), notify: vi.fn() };
+      if (name === 'User')         return userRepo;
+      if (name === 'Post')         return postRepo;
+      if (name === 'Comment')      return commentRepo;
+      if (name === 'Like')         return likeRepo;
+      if (name === 'Follow')       return followRepo;
+      if (name === 'Token')        return tokenRepo;
+      if (name === 'Notification') return notifRepo;
       throw new Error(`Unknown repo: ${name}`);
     }),
     _userRepo: userRepo, _postRepo: postRepo,
     _commentRepo: commentRepo, _likeRepo: likeRepo, _followRepo: followRepo,
+    _tokenRepo: tokenRepo,
   };
 }
 
@@ -148,6 +153,44 @@ describe('AdminService', () => {
     });
   });
 
+  describe('suspendUser()', () => {
+    it('suspends the user and revokes all tokens', async () => {
+      const factory = makeFactory({ findById: vi.fn().mockResolvedValue(makeUser({ suspended: false })) });
+      await new AdminService(factory as any).suspendUser('user-1');
+
+      expect(factory._userRepo.setSuspended).toHaveBeenCalledWith('user-1', true);
+      expect(factory._tokenRepo.revokeAllForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('throws 404 when user does not exist', async () => {
+      const factory = makeFactory({ findById: vi.fn().mockResolvedValue(null) });
+      await expect(new AdminService(factory as any).suspendUser('missing'))
+        .rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('skips suspend when user is already suspended (idempotent)', async () => {
+      const factory = makeFactory({ findById: vi.fn().mockResolvedValue(makeUser({ suspended: true })) });
+      await new AdminService(factory as any).suspendUser('user-1');
+
+      expect(factory._userRepo.setSuspended).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reinstateUser()', () => {
+    it('clears the suspended flag', async () => {
+      const factory = makeFactory({ findById: vi.fn().mockResolvedValue(makeUser({ suspended: true })) });
+      await new AdminService(factory as any).reinstateUser('user-1');
+
+      expect(factory._userRepo.setSuspended).toHaveBeenCalledWith('user-1', false);
+    });
+
+    it('throws 404 when user does not exist', async () => {
+      const factory = makeFactory({ findById: vi.fn().mockResolvedValue(null) });
+      await expect(new AdminService(factory as any).reinstateUser('missing'))
+        .rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
   describe('deletePost()', () => {
     it('soft-deletes any post regardless of author', async () => {
       const factory = makeFactory();
@@ -159,6 +202,12 @@ describe('AdminService', () => {
       const factory = makeFactory({}, { findByIdRaw: vi.fn().mockResolvedValue(null) });
       await expect(new AdminService(factory as any).deletePost('missing'))
         .rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('returns without calling softDelete when post is already deleted (idempotent)', async () => {
+      const factory = makeFactory({}, { findByIdRaw: vi.fn().mockResolvedValue({ id: 'post-1', authorId: 'user-1', deletedAt: new Date() }) });
+      await new AdminService(factory as any).deletePost('post-1');
+      expect(factory._postRepo.softDelete).not.toHaveBeenCalled();
     });
   });
 
@@ -173,6 +222,12 @@ describe('AdminService', () => {
       const factory = makeFactory({}, {}, { findByIdRaw: vi.fn().mockResolvedValue(null) });
       await expect(new AdminService(factory as any).deleteComment('missing'))
         .rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('returns without calling softDelete when comment is already deleted (idempotent)', async () => {
+      const factory = makeFactory({}, {}, { findByIdRaw: vi.fn().mockResolvedValue({ id: 'c1', authorId: 'user-1', deletedAt: new Date() }) });
+      await new AdminService(factory as any).deleteComment('c1');
+      expect(factory._commentRepo.softDelete).not.toHaveBeenCalled();
     });
   });
 

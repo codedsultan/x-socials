@@ -19,6 +19,7 @@ import type {
   VerifyOtpDto,
   ResetPasswordDto,
 } from './auth.types';
+import Logger from '../../logger';
 
 const BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_TTL_DAYS = 30;
@@ -45,6 +46,7 @@ export class AuthService {
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
     const exists = await this.userRepo.emailExists(dto.email);
+    const logger = Logger.getInstance();
     if (exists) {
       throw ApiError.conflict('An account with this email already exists');
     }
@@ -60,7 +62,10 @@ export class AuthService {
     const tokens = await this.issueTokens(user.id, user.email);
 
     // Fire-and-forget: send email verification OTP after registration.
-    this.sendEmailVerificationOtp(user.id, user.email).catch(() => { });
+    // this.sendEmailVerificationOtp(user.id, user.email).catch(() => { });
+    this.sendEmailVerificationOtp(user.id, user.email).catch((err) => {
+      logger.error(`Failed to send verification email to ${user.email}: ${err.message}`);
+    });
 
     return {
       user: { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt },

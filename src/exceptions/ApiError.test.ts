@@ -56,3 +56,25 @@ describe("ApiError", () => {
     expect(error.statusCode).toBe(400);
   });
 });
+
+import { UnauthorizedError, NotFoundError, ValidationError } from "./ApiError";
+
+describe("ApiError subclasses", () => {
+  it("UnauthorizedError sets statusCode 401 and default message", () => {
+    const e = new UnauthorizedError();
+    expect(e.statusCode).toBe(401);
+    expect(e.message).toBe("Unauthorized access");
+  });
+
+  it("NotFoundError sets statusCode 404 and default message", () => {
+    const e = new NotFoundError();
+    expect(e.statusCode).toBe(404);
+    expect(e.message).toBe("Resource not found");
+  });
+
+  it("ValidationError sets statusCode 400 with provided message", () => {
+    const e = new ValidationError("email is required");
+    expect(e.statusCode).toBe(400);
+    expect(e.message).toBe("email is required");
+  });
+});

@@ -1,6 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CommentsService } from '../comments.service';
 
+vi.mock('../../../services/ModerationWebhook', () => ({
+  moderationWebhook: {
+    enqueueComment: vi.fn().mockResolvedValue(undefined),
+    enqueuePost:    vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 function makeComment(overrides = {}) {
   return { id: 'c-1', postId: 'post-1', authorId: 'user-1', content: 'Nice!', parentId: null, ...overrides };
 }
@@ -57,6 +64,24 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
 }
 
 describe('CommentsService', () => {
+  describe('getReplies', () => {
+    it('returns paginated replies for a parent comment', async () => {
+      const factory = makeFactory();
+      const service = new CommentsService(factory as any);
+      const result = await service.getReplies('c-1', { limit: 20 });
+      expect(result.items).toHaveLength(1);
+      expect(result.meta).toBeDefined();
+    });
+
+    it('returns empty page when there are no replies', async () => {
+      const factory = makeFactory();
+      factory._commentRepo.findMany.mockResolvedValue([]);
+      const service = new CommentsService(factory as any);
+      const result = await service.getReplies('c-1', { limit: 20 });
+      expect(result.items).toEqual([]);
+    });
+  });
+
   describe('listForPost', () => {
     it('returns paginated comments for a post', async () => {
       const factory = makeFactory();
@@ -89,6 +114,31 @@ describe('CommentsService', () => {
       const service = new CommentsService(factory as any);
       await expect(service.createComment('user-1', 'bad-post', { content: 'x' }))
         .rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('creates a reply when parentId is provided and parent belongs to the same post', async () => {
+      const factory = makeFactory();
+      const service = new CommentsService(factory as any);
+      const comment = await service.createComment('user-1', 'post-1', { content: 'A reply!', parentId: 'c-1' });
+      expect(factory._commentRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ parentId: 'c-1', postId: 'post-1' })
+      );
+      expect(comment).toBeDefined();
+    });
+
+    it('throws 404 when parent comment does not exist', async () => {
+      const factory = makeFactory();
+      factory._commentRepo.findById.mockResolvedValue(null);
+      const service = new CommentsService(factory as any);
+      await expect(service.createComment('user-1', 'post-1', { content: 'Reply', parentId: 'nonexistent' }))
+        .rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('throws 400 when parent comment belongs to a different post', async () => {
+      const factory = makeFactory({ commentOverrides: { postId: 'different-post' } });
+      const service = new CommentsService(factory as any);
+      await expect(service.createComment('user-1', 'post-1', { content: 'Reply', parentId: 'c-1' }))
+        .rejects.toMatchObject({ statusCode: 400 });
     });
   });
 

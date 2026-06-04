@@ -219,6 +219,29 @@ describe('UsersService', () => {
     });
   });
 
+  describe('listUsers()', () => {
+    it('returns offset-paginated profiles with email omitted', async () => {
+      const factory = makeFactory({ count: vi.fn().mockResolvedValue(3) });
+      const service = new UsersService(factory as any);
+      const result = await service.listUsers({ page: 1, limit: 20 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).not.toHaveProperty('email');
+      expect(result.meta.total).toBe(3);
+    });
+
+    it('passes skip based on page and limit to the repo', async () => {
+      const factory = makeFactory();
+      const service = new UsersService(factory as any);
+      await service.listUsers({ page: 2, limit: 10 });
+
+      expect(factory._userRepo.findMany).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ limit: 10, skip: 10 })
+      );
+    });
+  });
+
   describe('updateProfile()', () => {
     it('updates and returns the updated profile', async () => {
       const factory = makeFactory();

@@ -136,8 +136,8 @@ describe('AuthService', () => {
 
       await svc.register({ name: 'Alice', email: 'a@b.com', password: 'Password1' });
 
-      // Give the fire-and-forget microtask a tick to run
-      await new Promise(r => setTimeout(r, 10));
+      // Drain the microtask queue so the fire-and-forget chain completes
+      await new Promise<void>(resolve => setImmediate(resolve));
 
       expect(factory._otpRepo.create).toHaveBeenCalledOnce();
       expect(emailDriver.calls[0]?.subject).toBe('Verify your email address');
@@ -274,6 +274,31 @@ describe('AuthService', () => {
 
       await expect(svc.resetPassword({ email: 'a@b.com', code: '000000', newPassword: 'Pass1!!' }))
         .rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  // ── requestEmailVerification ──────────────────────────────────────────────
+
+  describe('requestEmailVerification', () => {
+    it('issues OTP and sends email for existing user', async () => {
+      const emailDriver = makeEmailDriver();
+      const factory = makeFactory({
+        findById: vi.fn().mockResolvedValue({ id: 'user-1', email: 'a@b.com', name: 'Alice' }),
+      });
+      const svc = new AuthService(factory as any, createEmailService(emailDriver));
+
+      await svc.requestEmailVerification('user-1');
+
+      expect(factory._otpRepo.create).toHaveBeenCalledOnce();
+      expect(emailDriver.calls[0]?.subject).toBe('Verify your email address');
+    });
+
+    it('throws 404 when user does not exist', async () => {
+      const factory = makeFactory({ findById: vi.fn().mockResolvedValue(null) });
+      const svc = new AuthService(factory as any, createEmailService(makeEmailDriver()));
+
+      await expect(svc.requestEmailVerification('ghost'))
+        .rejects.toMatchObject({ statusCode: 404 });
     });
   });
 
