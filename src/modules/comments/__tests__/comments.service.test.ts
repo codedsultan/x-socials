@@ -35,7 +35,10 @@ function makeFactory({ postExists = true, commentOverrides = {} } = {}) {
     findMany: vi.fn().mockResolvedValue([]),
     findOne: vi.fn().mockResolvedValue(null),
     exists: vi.fn(), findByAuthor: vi.fn(), findByTag: vi.fn(),
-    incrementLikes: vi.fn(), count: vi.fn().mockResolvedValue(0),
+    incrementLikes: vi.fn(), decrementLikes: vi.fn(),
+    incrementComments: vi.fn().mockResolvedValue(undefined),
+    decrementComments: vi.fn().mockResolvedValue(undefined),
+    count: vi.fn().mockResolvedValue(0),
   };
     const notifRepo = {
     notify:      vi.fn().mockResolvedValue(null),
@@ -140,6 +143,15 @@ describe('CommentsService', () => {
       await expect(service.createComment('user-1', 'post-1', { content: 'Reply', parentId: 'c-1' }))
         .rejects.toMatchObject({ statusCode: 400 });
     });
+
+    it('calls incrementComments on the post after creating a comment', async () => {
+      const factory = makeFactory();
+      const service = new CommentsService(factory as any);
+      await service.createComment('user-1', 'post-1', { content: 'Nice!' });
+      // incrementComments is fire-and-forget; flush the microtask queue
+      await Promise.resolve();
+      expect(factory._postRepo.incrementComments).toHaveBeenCalledWith('post-1');
+    });
   });
 
   describe('updateComment', () => {
@@ -171,6 +183,14 @@ describe('CommentsService', () => {
       const service = new CommentsService(factory as any);
       await service.deleteComment('user-1', 'c-1');
       expect(factory._commentRepo.softDelete).toHaveBeenCalledWith('c-1', 'author_deleted');
+    });
+
+    it('calls decrementComments on the post after deleting a comment', async () => {
+      const factory = makeFactory();
+      const service = new CommentsService(factory as any);
+      await service.deleteComment('user-1', 'c-1');
+      await Promise.resolve();
+      expect(factory._postRepo.decrementComments).toHaveBeenCalledWith('post-1');
     });
   });
 });

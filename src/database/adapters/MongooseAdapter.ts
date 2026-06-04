@@ -3,6 +3,8 @@ import type { IDatabaseAdapter, FindManyOptions } from '../../interfaces/db/IAda
 import type { ModelSchemaEntry } from '../../models/schemas';
 
 export class MongooseAdapter implements IDatabaseAdapter {
+    readonly adapterType = 'mongo' as const;
+
     private connection: typeof mongoose | null = null;
     private readonly models: Map<string, mongoose.Model<mongoose.Document>> = new Map();
     private connected = false;
@@ -155,16 +157,23 @@ export class MongooseAdapter implements IDatabaseAdapter {
     }
 
     async update(model: string, id: string, data: Record<string, unknown>): Promise<unknown> {
-        // If data contains MongoDB update operators (keys starting with $),
-        // pass the payload as-is — operators must not be spread into a plain object.
-        // Otherwise wrap in $set so Mongoose performs a partial field update.
-        const hasOperators = Object.keys(data).some(k => k.startsWith('$'));
-        const { id: _, _id, ...updateData } = data;
+        let updatePayload: unknown;
 
-        const updatePayload = hasOperators ? updateData : { $set: updateData };
+        if (Array.isArray(data)) {
+            // Aggregation pipeline update (MongoDB 4.2+). Used for floor-guarded
+            // decrements where $inc + $max cannot operate on the same field together.
+            updatePayload = data;
+        } else {
+            // If data contains MongoDB update operators (keys starting with $),
+            // pass the payload as-is — operators must not be spread into a plain object.
+            // Otherwise wrap in $set so Mongoose performs a partial field update.
+            const hasOperators = Object.keys(data).some(k => k.startsWith('$'));
+            const { id: _, _id, ...updateData } = data;
+            updatePayload = hasOperators ? updateData : { $set: updateData };
+        }
 
         const doc = await this.getModel(model)
-            .findByIdAndUpdate(id, updatePayload, {
+            .findByIdAndUpdate(id, updatePayload as any, {
                 new: true,
                 runValidators: true,
                 returnDocument: 'after',

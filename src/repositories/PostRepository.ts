@@ -2,16 +2,17 @@ import { BaseRepository } from './BaseRepository';
 import type { IRepository, FindOptions } from '../interfaces/db/IRepository';
 
 export interface Post {
-    id:              string;
-    title:           string;
-    content:         string;
-    authorId:        string;
-    tags:            string[];
-    likesCount:      number;
-    deletedAt?:      Date | null;
+    id: string;
+    title: string;
+    content: string;
+    authorId: string;
+    tags: string[];
+    likesCount: number;
+    commentsCount: number;
+    deletedAt?: Date | null;
     deletionReason?: string | null;
-    createdAt?:      Date;
-    updatedAt?:      Date;
+    createdAt?: Date;
+    updatedAt?: Date;
 }
 
 /**
@@ -65,24 +66,96 @@ export class PostRepository extends BaseRepository<Post> implements IRepository<
     /** Soft-delete — sets deletedAt and deletionReason rather than removing. */
     async softDelete(postId: string, reason: string): Promise<void> {
         await this.update(postId, {
-            deletedAt:      new Date(),
+            deletedAt: new Date(),
             deletionReason: reason,
         } as unknown as Partial<Post>);
     }
 
+    // async incrementLikes(postId: string): Promise<Post | null> {
+    //     const isMongoAdapter = (this.adapter as any).models !== undefined;
+    //     if (isMongoAdapter) {
+    //         return this.adapter.update(
+    //             this.modelName,
+    //             postId,
+    //             { $inc: { likesCount: 1 } } as unknown as Record<string, unknown>
+    //         ) as Promise<Post | null>;
+    //     }
+    //     return this.adapter.update(
+    //         this.modelName,
+    //         postId,
+    //         { likesCountIncrement: 1 } as unknown as Record<string, unknown>
+    //     ) as Promise<Post | null>;
+    // }
+
+    // ─── Likes counter ────────────────────────────────────────────────────────
+
+    /**
+     * Atomically increment the likes counter by 1.
+     * MongoDB: $inc operator via findByIdAndUpdate.
+     * SQL: raw expression via KnexAdapter.
+     */
     async incrementLikes(postId: string): Promise<Post | null> {
-        const isMongoAdapter = (this.adapter as any).models !== undefined;
-        if (isMongoAdapter) {
+        return this.atomicIncrement(postId, 'likesCount', 1);
+    }
+
+    async decrementLikes(postId: string): Promise<Post | null> {
+        return this.atomicIncrement(postId, 'likesCount', -1, 0);
+    }
+
+    // ─── Comments counter ─────────────────────────────────────────────────────
+
+    /**
+     * Atomically increment the commentsCount counter by 1.
+     * Called by CommentsService.createComment() after persisting the comment.
+     */
+    async incrementComments(postId: string): Promise<Post | null> {
+        return this.atomicIncrement(postId, 'commentsCount', 1);
+    }
+
+    /**
+     * Atomically decrement the commentsCount counter by 1 (floor 0).
+     * Called by CommentsService.deleteComment() after removing the comment.
+     */
+    async decrementComments(postId: string): Promise<Post | null> {
+        return this.atomicIncrement(postId, 'commentsCount', -1, 0);
+    }
+
+    // ─── Private ──────────────────────────────────────────────────────────────
+
+    private async atomicIncrement(
+        postId: string,
+        field: 'likesCount' | 'commentsCount',
+        delta: 1 | -1,
+        floor?: number,
+    ): Promise<Post | null> {
+        if (this.adapter.adapterType === 'mongo') {
+            if (floor !== undefined) {
+                // Aggregation pipeline update enforces the floor atomically.
+                // $inc + $max cannot operate on the same field in a single update.
+                return this.adapter.update(
+                    this.modelName,
+                    postId,
+                    [{
+                        $set: {
+                            [field]: { $max: [{ $subtract: [`$${field}`, Math.abs(delta)] }, floor] },
+                        },
+                    }] as unknown as Record<string, unknown>,
+                ) as Promise<Post | null>;
+            }
             return this.adapter.update(
                 this.modelName,
                 postId,
-                { $inc: { likesCount: 1 } } as unknown as Record<string, unknown>
+                { $inc: { [field]: delta } } as unknown as Record<string, unknown>,
             ) as Promise<Post | null>;
         }
+
+        // SQL: KnexAdapter translates `<field>Increment` to a knex.raw() expression.
+        // When floor is provided, it emits CASE WHEN col + delta < floor THEN floor ELSE col + delta END.
+        const incrementValue = floor !== undefined ? { value: delta, floor } : delta;
         return this.adapter.update(
             this.modelName,
             postId,
-            { likesCountIncrement: 1 } as unknown as Record<string, unknown>
+            { [`${field}Increment`]: incrementValue } as unknown as Record<string, unknown>,
         ) as Promise<Post | null>;
     }
 }

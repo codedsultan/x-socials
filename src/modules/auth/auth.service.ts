@@ -129,9 +129,10 @@ export class AuthService {
     if (!user) throw ApiError.notFound('User not found');
 
     const otpService = new OtpService(this.otpRepo);
-    await otpService.verify(dto.userId, dto.code, 'email_verification');
+    const otpId = await otpService.validate(dto.userId, dto.code, 'email_verification');
 
     await this.userRepo.update(dto.userId, { emailVerifiedAt: new Date() } as any);
+    await otpService.consume(otpId);
   }
 
   // ─── Password reset ──────────────────────────────────────────────────────
@@ -155,12 +156,12 @@ export class AuthService {
     if (!user) throw ApiError.badRequest('Invalid or expired verification code');
 
     const otpService = new OtpService(this.otpRepo);
-    await otpService.verify(user.id, dto.code, 'password_reset');
+    const otpId = await otpService.validate(user.id, dto.code, 'password_reset');
 
     const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
     await this.userRepo.update(user.id, { passwordHash } as any);
-
     await this.tokenRepo.revokeAllForUser(user.id);
+    await otpService.consume(otpId);
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────
