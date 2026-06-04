@@ -181,4 +181,122 @@ describe('PostRepository', () => {
       );
     });
   });
+
+  describe('incrementComments()', () => {
+    it('uses $inc for Mongo adapter', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.incrementComments('post-1');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post', 'post-1',
+        expect.objectContaining({ $inc: { commentsCount: 1 } })
+      );
+    });
+
+    it('uses commentsCountIncrement for SQL adapter', async () => {
+      const adapter = makeSqlAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.incrementComments('post-1');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post', 'post-1',
+        expect.objectContaining({ commentsCountIncrement: 1 })
+      );
+    });
+  });
+
+  describe('findById()', () => {
+    it('returns null when post is soft-deleted', async () => {
+      const adapter = makeMongoAdapter({
+        findOne: vi.fn().mockResolvedValue(makePost({ deletedAt: new Date() })),
+      });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      expect(await repo.findById('post-1')).toBeNull();
+    });
+
+    it('returns the post when not soft-deleted', async () => {
+      const adapter = makeMongoAdapter({
+        findOne: vi.fn().mockResolvedValue(makePost({ deletedAt: null })),
+      });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      expect(await repo.findById('post-1')).toMatchObject({ id: 'post-1' });
+    });
+
+    it('returns null when post is not found', async () => {
+      const adapter = makeMongoAdapter({ findOne: vi.fn().mockResolvedValue(null) });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      expect(await repo.findById('post-1')).toBeNull();
+    });
+  });
+
+  describe('findByIdRaw()', () => {
+    it('returns soft-deleted posts (bypasses filter)', async () => {
+      const deleted = makePost({ deletedAt: new Date() });
+      const adapter = makeMongoAdapter({ findOne: vi.fn().mockResolvedValue(deleted) });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      const result = await repo.findByIdRaw('post-1');
+
+      expect(result).toMatchObject({ deletedAt: expect.any(Date) });
+    });
+  });
+
+  describe('findByAuthorIds()', () => {
+    it('returns empty array immediately for empty input', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      const result = await repo.findByAuthorIds([]);
+
+      expect(result).toEqual([]);
+      expect(adapter.findMany).not.toHaveBeenCalled();
+    });
+
+    it('calls findMany with notDeleted filter and author id list', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.findByAuthorIds(['u1', 'u2'], { limit: 5 });
+
+      expect(adapter.findMany).toHaveBeenCalledWith(
+        'Post',
+        expect.objectContaining({ deletedAt: null, authorId: ['u1', 'u2'] }),
+        { limit: 5 }
+      );
+    });
+  });
+
+  describe('softDelete()', () => {
+    it('sets deletedAt and deletionReason via update', async () => {
+      const adapter = makeMongoAdapter();
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.softDelete('post-1', 'violates TOS');
+
+      expect(adapter.update).toHaveBeenCalledWith(
+        'Post', 'post-1',
+        expect.objectContaining({ deletedAt: expect.any(Date), deletionReason: 'violates TOS' })
+      );
+    });
+  });
+
+  describe('count()', () => {
+    it('merges the notDeleted filter with the caller filter', async () => {
+      const adapter = makeMongoAdapter({ count: vi.fn().mockResolvedValue(3) });
+      const repo = new PostRepository(adapter as any, 'Post');
+
+      await repo.count({ authorId: 'u1' } as any);
+
+      expect(adapter.count).toHaveBeenCalledWith(
+        'Post',
+        expect.objectContaining({ deletedAt: null, authorId: 'u1' })
+      );
+    });
+  });
 });
